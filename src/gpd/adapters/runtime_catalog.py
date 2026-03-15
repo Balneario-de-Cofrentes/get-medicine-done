@@ -37,6 +37,7 @@ class RuntimeDescriptor:
     priority: int
     config_dir_name: str
     install_flag: str
+    launch_command: str
     command_prefix: str
     activation_env_vars: tuple[str, ...]
     selection_flags: tuple[str, ...]
@@ -65,6 +66,7 @@ def _load_catalog() -> tuple[RuntimeDescriptor, ...]:
                 priority=int(entry.get("priority", 100)),
                 config_dir_name=str(entry["config_dir_name"]),
                 install_flag=str(entry["install_flag"]),
+                launch_command=str(entry["launch_command"]),
                 command_prefix=str(entry["command_prefix"]),
                 native_include_support=bool(entry.get("native_include_support", False)),
                 activation_env_vars=tuple(str(value) for value in entry.get("activation_env_vars", [])),

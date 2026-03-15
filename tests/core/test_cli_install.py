@@ -226,8 +226,8 @@ def test_install_summary_formats_target_relative_to_cwd(tmp_path: Path):
     assert str(target) not in result.output
 
 
-def test_install_summary_leaves_blank_line_after_help_hint(tmp_path: Path):
-    """Install output should leave a blank line after the help hint."""
+def test_install_summary_leaves_blank_line_after_next_steps(tmp_path: Path):
+    """Install output should leave a blank line after the next-steps block."""
     target = tmp_path / ".claude"
 
     def mock_install_single(runtime_name, *, is_global, target_dir_override=None):
@@ -239,13 +239,22 @@ def test_install_summary_leaves_blank_line_after_help_hint(tmp_path: Path):
     ):
         mock_adapter = MagicMock()
         mock_adapter.display_name = "Claude Code"
+        mock_adapter.launch_command = "claude"
         mock_adapter.help_command = "/gpd:help"
+        mock_adapter.new_project_command = "/gpd:new-project"
+        mock_adapter.map_research_command = "/gpd:map-research"
         mock_get.return_value = mock_adapter
 
         result = runner.invoke(app, ["--cwd", str(tmp_path), "install", "claude-code", "--local"])
 
     assert result.exit_code == 0
-    assert "Run /gpd:help to see available commands.\n\n" in result.output
+    assert "Next steps" in result.output
+    assert "1. Open Claude Code from your system terminal (claude)." in result.output
+    assert "2. Run /gpd:help for the command list." in result.output
+    assert (
+        "3. Start with /gpd:new-project for a new project or /gpd:map-research for existing work.\n\n"
+        in result.output
+    )
 
 
 def test_install_summary_lists_runtime_specific_help_for_multi_runtime_install(tmp_path: Path):
@@ -260,8 +269,20 @@ def test_install_summary_lists_runtime_specific_help_for_multi_runtime_install(t
         }
 
     adapters = {
-        "claude-code": MagicMock(display_name="Claude Code", help_command="/gpd:claude-help"),
-        "gemini": MagicMock(display_name="Gemini CLI", help_command="/gpd:gemini-help"),
+        "claude-code": MagicMock(
+            display_name="Claude Code",
+            launch_command="claude",
+            help_command="/gpd:claude-help",
+            new_project_command="/gpd:claude-new-project",
+            map_research_command="/gpd:claude-map-research",
+        ),
+        "gemini": MagicMock(
+            display_name="Gemini CLI",
+            launch_command="gemini",
+            help_command="/gpd:gemini-help",
+            new_project_command="/gpd:gemini-new-project",
+            map_research_command="/gpd:gemini-map-research",
+        ),
     }
 
     with (
@@ -271,10 +292,16 @@ def test_install_summary_lists_runtime_specific_help_for_multi_runtime_install(t
         result = runner.invoke(app, ["install", "claude-code", "gemini", "--local"])
 
     assert result.exit_code == 0
-    assert "Initialize your runtime, then run the matching help command:" in result.output
-    assert "- Claude Code: /gpd:claude-help" in result.output
-    assert "- Gemini CLI: /gpd:gemini-help" in result.output
-    assert "Run /gpd:claude-help to see available commands." not in result.output
+    assert "Next steps" in result.output
+    assert (
+        "- Claude Code (claude), then /gpd:claude-help, then /gpd:claude-new-project or /gpd:claude-map-research"
+        in result.output
+    )
+    assert (
+        "- Gemini CLI (gemini), then /gpd:gemini-help, then /gpd:gemini-new-project or /gpd:gemini-map-research"
+        in result.output
+    )
+    assert "1. From your system terminal" not in result.output
 
 
 # ─── 4. Uninstall without manifest ──────────────────────────────────────────

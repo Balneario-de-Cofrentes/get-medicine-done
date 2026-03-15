@@ -28,6 +28,14 @@ Install GPD:
 npx -y get-physics-done
 ```
 
+**Next steps after install**
+
+The installer adds GPD to your runtime config, but it does not launch the runtime for you.
+
+1. Open your chosen runtime from your normal system terminal (`claude` for Claude Code, `gemini` for Gemini CLI, `codex` for Codex, `opencode` for OpenCode).
+2. Run its help command first: Claude Code / Gemini CLI use `/gpd:help`, Codex uses `$gpd-help`, and OpenCode uses `/gpd-help`.
+3. Start with `new-project` for a fresh research project or `map-research` for an existing folder or project.
+
 For best performance, run both this install step and your chosen runtime from your normal system terminal, not inside the VS Code, Cursor, or other AI runtime command/chat interface.
 
 Then choose the path that matches your starting point:

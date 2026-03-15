@@ -3953,29 +3953,55 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
 
     console.print(table)
 
-    # Post-install help hint
+    # Post-install next steps
     if results:
-        help_entries: list[tuple[str, str]] = []
+        next_step_entries: list[tuple[str, str, str, str, str]] = []
         seen_runtime_names: set[str] = set()
         for runtime_name, _result in results:
             if runtime_name in seen_runtime_names:
                 continue
             seen_runtime_names.add(runtime_name)
             adapter = get_adapter(runtime_name)
-            help_entries.append((adapter.display_name, adapter.help_command))
+            next_step_entries.append(
+                (
+                    adapter.display_name,
+                    adapter.launch_command,
+                    adapter.help_command,
+                    adapter.new_project_command,
+                    adapter.map_research_command,
+                )
+            )
 
-        unique_help_commands = {help_command for _display_name, help_command in help_entries}
         console.print()
-        if len(unique_help_commands) == 1:
-            console.print(f"[dim]Run [{_INSTALL_ACCENT_COLOR} bold]{help_entries[0][1]}[/] to see available commands.[/]")
-        else:
+        console.print("[bold]Next steps[/]")
+        if len(next_step_entries) == 1:
+            display_name, launch_command, help_command, new_project_command, map_research_command = next_step_entries[0]
             console.print(
-                "Initialize your runtime, then run the matching help command:",
-                style="dim",
+                f"1. Open [bold]{display_name}[/] from your system terminal "
+                f"([{_INSTALL_ACCENT_COLOR} bold]{launch_command}[/]).",
                 soft_wrap=True,
             )
-            for display_name, help_command in help_entries:
-                console.print(f"[dim]- {display_name}: [{_INSTALL_ACCENT_COLOR} bold]{help_command}[/][/]")
+            console.print(
+                f"2. Run [{_INSTALL_ACCENT_COLOR} bold]{help_command}[/] for the command list.",
+                soft_wrap=True,
+            )
+            console.print(
+                "3. Start with "
+                f"[{_INSTALL_ACCENT_COLOR} bold]{new_project_command}[/] for a new project "
+                "or "
+                f"[{_INSTALL_ACCENT_COLOR} bold]{map_research_command}[/] for existing work.",
+                soft_wrap=True,
+            )
+        else:
+            for display_name, launch_command, help_command, new_project_command, map_research_command in next_step_entries:
+                console.print(
+                    f"- {display_name} "
+                    f"([{_INSTALL_ACCENT_COLOR} bold]{launch_command}[/]), then "
+                    f"[{_INSTALL_ACCENT_COLOR} bold]{help_command}[/], then "
+                    f"[{_INSTALL_ACCENT_COLOR} bold]{new_project_command}[/] "
+                    f"or [{_INSTALL_ACCENT_COLOR} bold]{map_research_command}[/]",
+                    soft_wrap=True,
+                )
         console.print()
 
 

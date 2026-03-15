@@ -39,6 +39,24 @@ RUNTIME_HELP_COMMANDS = {
     "gemini": "/gpd:help",
     "opencode": "/gpd-help",
 }
+RUNTIME_LAUNCH_COMMANDS = {
+    "claude-code": "claude",
+    "codex": "codex",
+    "gemini": "gemini",
+    "opencode": "opencode",
+}
+RUNTIME_NEW_PROJECT_COMMANDS = {
+    "claude-code": "/gpd:new-project",
+    "codex": "$gpd-new-project",
+    "gemini": "/gpd:new-project",
+    "opencode": "/gpd-new-project",
+}
+RUNTIME_MAP_RESEARCH_COMMANDS = {
+    "claude-code": "/gpd:map-research",
+    "codex": "$gpd-map-research",
+    "gemini": "/gpd:map-research",
+    "opencode": "/gpd-map-research",
+}
 ALL_RUNTIME_NAMES = list(RUNTIME_DISPLAY_NAMES)
 
 
@@ -68,7 +86,10 @@ MAIN_ARCHIVE_SPEC = {MAIN_ARCHIVE_SPEC!r}
 TAG_HTTPS_GIT_SPEC = {TAG_HTTPS_GIT_SPEC!r}
 MAIN_HTTPS_GIT_SPEC = {MAIN_HTTPS_GIT_SPEC!r}
 RUNTIME_LABELS = {RUNTIME_DISPLAY_NAMES!r}
+LAUNCH_COMMANDS = {RUNTIME_LAUNCH_COMMANDS!r}
 HELP_COMMANDS = {RUNTIME_HELP_COMMANDS!r}
+NEW_PROJECT_COMMANDS = {RUNTIME_NEW_PROJECT_COMMANDS!r}
+MAP_RESEARCH_COMMANDS = {RUNTIME_MAP_RESEARCH_COMMANDS!r}
 ALL_RUNTIMES = {ALL_RUNTIME_NAMES!r}
 
 
@@ -177,13 +198,26 @@ if args[:3] == ["-m", "gpd.cli", "install"]:
     for runtime in runtimes:
         print(f"✓ {{RUNTIME_LABELS[runtime]}}")
     print("Install Summary")
+    print("Next steps")
     if len(runtimes) == 1:
         runtime = runtimes[0]
-        print(f"Run {{HELP_COMMANDS[runtime]}} to see available commands.")
+        print(
+            f"1. Open {{RUNTIME_LABELS[runtime]}} from your system terminal "
+            f"({{LAUNCH_COMMANDS[runtime]}})."
+        )
+        print(f"2. Run {{HELP_COMMANDS[runtime]}} for the command list.")
+        print(
+            "3. Start with "
+            f"{{NEW_PROJECT_COMMANDS[runtime]}} for a new project or "
+            f"{{MAP_RESEARCH_COMMANDS[runtime]}} for existing work."
+        )
     else:
-        print("Initialize your runtime, then run the matching help command:")
         for runtime in runtimes:
-            print(f"- {{RUNTIME_LABELS[runtime]}}: {{HELP_COMMANDS[runtime]}}")
+            print(
+                f"- {{RUNTIME_LABELS[runtime]}} ({{LAUNCH_COMMANDS[runtime]}}), then "
+                f"{{HELP_COMMANDS[runtime]}}, then "
+                f"{{NEW_PROJECT_COMMANDS[runtime]}} or {{MAP_RESEARCH_COMMANDS[runtime]}}"
+            )
     record()
     raise SystemExit(0)
 
@@ -269,7 +303,13 @@ def test_bootstrap_uses_managed_virtualenv_and_skips_host_pip(tmp_path: Path) ->
     assert "© 2026 Physical Superintelligence PBC (PSI)" in result.stdout
     assert "Installing GPD (local) for: Codex" in result.stdout
     assert "Install Summary" in result.stdout
-    assert "Run $gpd-help to see available commands." in result.stdout
+    assert "Next steps" in result.stdout
+    assert "1. Open Codex from your system terminal (codex)." in result.stdout
+    assert "2. Run $gpd-help for the command list." in result.stdout
+    assert (
+        "3. Start with $gpd-new-project for a new project or $gpd-map-research for existing work."
+        in result.stdout
+    )
     assert "Installing GPD for Codex (local)..." not in result.stdout
     assert "Installed GPD for Codex (local)." not in result.stdout
 
@@ -630,7 +670,8 @@ def test_bootstrap_supports_all_runtime_install_in_one_pass(tmp_path: Path) -> N
     assert "Codex" in result.stdout
     assert "OpenCode" in result.stdout
     assert "Install Summary" in result.stdout
-    assert "Initialize your runtime, then run the matching help command:" in result.stdout
+    assert "Next steps" in result.stdout
+    assert "- Claude Code (claude), then /gpd:help, then /gpd:new-project or /gpd:map-research" in result.stdout
 
 
 @pytest.mark.skipif(os.name == "nt", reason="bootstrap installer harness uses POSIX-style fake Python shims")

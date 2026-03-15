@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,19 @@ from gpd.core.suggest import (
     SuggestResult,
     suggest_next,
 )
+
+_RUNTIME_ENV_PREFIXES = ("CLAUDE", "CODEX", "GEMINI", "OPENCODE")
+_RUNTIME_ENV_VARS_TO_CLEAR = {"GPD_ACTIVE_RUNTIME", "XDG_CONFIG_HOME"}
+
+
+@pytest.fixture(autouse=True)
+def _isolate_runtime_detection(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keep suggest tests independent from the host machine's runtime installs."""
+    for key in list(os.environ):
+        if key.startswith(_RUNTIME_ENV_PREFIXES) or key in _RUNTIME_ENV_VARS_TO_CLEAR:
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr("gpd.hooks.runtime_detect.Path.home", lambda: tmp_path / "home")
+
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 
