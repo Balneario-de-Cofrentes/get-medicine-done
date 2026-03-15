@@ -409,6 +409,12 @@ def test_public_docs_keep_runtime_surface_first() -> None:
     repo_root = _repo_root()
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
 
+    assert "## Quick Start" in readme
+    assert "**Next steps after install**" in readme
+    assert "it does not launch the runtime for you" in readme
+    assert "Open your chosen runtime from your normal system terminal" in readme
+    assert "`claude` for Claude Code" in readme
+    assert "`gemini` for Gemini CLI" in readme
     assert "## Supported Runtimes" in readme
     assert "## Advanced CLI Utilities" in readme
     assert readme.index("## Supported Runtimes") < readme.index("## Advanced CLI Utilities")

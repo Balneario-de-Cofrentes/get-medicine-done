@@ -70,6 +70,21 @@ class RuntimeAdapter(abc.ABC):
         return self.format_command("help")
 
     @property
+    def launch_command(self) -> str:
+        """System-terminal command for opening this runtime."""
+        return self.runtime_descriptor.launch_command
+
+    @property
+    def new_project_command(self) -> str:
+        """Runtime-specific command for starting a new project."""
+        return self.format_command("new-project")
+
+    @property
+    def map_research_command(self) -> str:
+        """Runtime-specific command for mapping existing work."""
+        return self.format_command("map-research")
+
+    @property
     def activation_env_vars(self) -> tuple[str, ...]:
         """Environment variables that signal this runtime is active."""
         return self.runtime_descriptor.activation_env_vars
