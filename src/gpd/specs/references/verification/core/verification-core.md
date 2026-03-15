@@ -1,740 +1,1046 @@
 ---
 load_when:
   - "verification"
-  - "dimensional analysis"
-  - "limiting cases"
-  - "symmetry check"
-  - "conservation law"
-  - "physical plausibility"
-  - "cancellation detection"
+  - "PICO consistency"
+  - "sensitivity analysis"
+  - "risk of bias"
+  - "GRADE certainty"
+  - "clinical plausibility"
+  - "statistical validity"
 tier: 1
 context_cost: large
 ---
 
-# Verification Core — Universal Physics Checks
+# Verification Core — Universal Medical Research Checks
 
-Dimensional analysis, limiting cases, symmetry, conservation laws, order-of-magnitude estimation, and physical plausibility. These checks catch ~60% of all physics errors and apply to every subfield.
+PICO consistency, sensitivity analysis, risk of bias assessment, GRADE certainty evaluation, clinical plausibility, and statistical validity. These checks catch the majority of errors in systematic reviews, meta-analyses, and clinical evidence synthesis and apply to every medical research subfield.
 
-**Load when:** Always — these are the non-negotiable checks for any physics calculation.
+**Load when:** Always — these are the non-negotiable checks for any medical research analysis.
 
 **Related files:**
 - `references/verification/core/verification-quick-reference.md` — compact checklist (default entry point)
-- `references/verification/core/verification-numerical.md` — convergence, statistical validation, numerical stability
-- `../domains/verification-domain-qft.md` — QFT, particle, GR, mathematical physics
-- `../domains/verification-domain-condmat.md` — condensed matter, quantum information, AMO
-- `../domains/verification-domain-statmech.md` — statistical mechanics, cosmology, fluids
-- `../audits/verification-gap-analysis.md` — current verification coverage architecture and gap overview
+- `references/verification/core/verification-numerical.md` — statistical verification, convergence, numerical validation
+- `references/verification/core/verification-patterns.md` — verification pattern index
+- `references/verification/core/computational-verification-templates.md` — R/Python code templates for verification
+- `references/verification/core/code-testing-medical.md` — testing patterns for medical research code
 
 ---
 
 <core_principle>
 **Existence != Correctness**
 
-A calculation existing does not mean the physics is right. Verification must check:
+An analysis existing does not mean the evidence synthesis is right. Verification must check:
 
-1. **Exists** - Result is present (equation derived, code runs, number produced)
-2. **Dimensionally consistent** - All terms have matching dimensions; units propagate correctly
-3. **Physically plausible** - Result is the right order of magnitude, has correct sign, obeys known constraints
-4. **Cross-validated** - Agrees with independent methods, known limits, conservation laws, and literature
+1. **Exists** — Result is present (analysis complete, data extracted, code runs, forest plot generated)
+2. **Methodologically consistent** — Study design appropriate, PICO elements consistent across included studies, risk of bias assessed correctly, statistical model appropriate
+3. **Clinically plausible** — Effect sizes reasonable, direction makes biological sense, consistent with prior evidence, NNT/NNH meaningful
+4. **Cross-validated** — Agrees with sensitivity analyses, subgroup analyses, independent methods (different effect measures, different models), and existing literature/guidelines
 
 Levels 1-3 can often be checked programmatically. Level 4 requires deeper analysis and sometimes human judgment.
 
-**Level 5: External Oracle** — Result verified by an independent computational system (SymPy, numpy, or other CAS/numerical library) whose output is shown in VERIFICATION.md. This is the strongest form of verification because it breaks the LLM self-consistency loop: the LLM cannot hallucinate a correct CAS output.
+**Level 5: External Oracle** — Result verified by an independent computational system (R metafor, Python statsmodels, or Cochrane RevMan) whose output is shown in VERIFICATION.md. This is the strongest form of verification because it breaks the LLM self-consistency loop: the LLM cannot hallucinate a correct statistical software output.
 
 Every VERIFICATION.md MUST include at least one Level 5 check — an executed code block with actual output. See `references/verification/core/computational-verification-templates.md` for copy-paste-ready templates.
 </core_principle>
 
-> **Key companion document:** See `../errors/llm-physics-errors.md` for the catalog of 104 LLM-specific physics error classes with detection strategies and traceability matrix.
+> **Key companion document:** See `../errors/llm-medical-errors.md` for the catalog of LLM-specific medical research error classes with detection strategies and traceability matrix.
 
-<dimensional_analysis>
+<pico_consistency>
 
-## Dimensional Analysis Verification
+## PICO Consistency Checking
 
-The most fundamental physics check. If dimensions don't match, the result is certainly wrong.
+The most fundamental evidence synthesis check. If PICO elements are inconsistent across included studies, the synthesis is meaningless.
 
-**Principle:** Every term in an equation must have the same dimensions. Every argument of a transcendental function (exp, log, sin, etc.) must be dimensionless.
+**Principle:** Every study included in a systematic review or meta-analysis must share compatible Population, Intervention, Comparison, and Outcome definitions. Heterogeneity in PICO elements that is not explicitly acknowledged and handled invalidates the pooled estimate.
 
 **Automated checks:**
 
 ```python
-# Using sympy.physics.units or pint
-from sympy.physics.units import Dimension
-from sympy.physics.units.systems import SI
+def check_pico_consistency(studies: list[dict]) -> dict:
+    """Verify PICO elements are compatible across included studies.
 
-def check_dimensions(lhs_dim, rhs_dim):
-    """Verify both sides of an equation have matching dimensions."""
-    if lhs_dim != rhs_dim:
-        raise DimensionError(
-            f"Dimensional mismatch: LHS has {lhs_dim}, RHS has {rhs_dim}"
+    Args:
+        studies: List of study dicts with keys:
+            population, intervention, comparator, outcome,
+            outcome_measure, timepoint, setting
+    """
+    issues = []
+
+    # Check outcome measure consistency
+    measures = set(s["outcome_measure"] for s in studies)
+    if len(measures) > 1:
+        issues.append(
+            f"Mixed outcome measures: {measures}. "
+            "Ensure appropriate effect measure (SMD for different scales, "
+            "RR/OR for binary with consistent direction)."
         )
+
+    # Check intervention consistency
+    interventions = set(s["intervention"] for s in studies)
+    if len(interventions) > 1:
+        issues.append(
+            f"Multiple interventions: {interventions}. "
+            "Consider subgroup analysis or network meta-analysis."
+        )
+
+    # Check comparator consistency
+    comparators = set(s["comparator"] for s in studies)
+    if len(comparators) > 1:
+        issues.append(
+            f"Multiple comparators: {comparators}. "
+            "Active vs placebo comparisons should not be pooled naively."
+        )
+
+    # Check population overlap
+    populations = set(s["population"] for s in studies)
+    if len(populations) > 1:
+        issues.append(
+            f"Heterogeneous populations: {populations}. "
+            "Verify clinical homogeneity or plan subgroup analysis."
+        )
+
+    # Check timepoint consistency
+    timepoints = [s["timepoint"] for s in studies]
+    if max(timepoints) / max(min(timepoints), 1) > 3:
+        issues.append(
+            f"Timepoints range from {min(timepoints)} to {max(timepoints)}. "
+            "Large variation may introduce clinical heterogeneity."
+        )
+
+    return {"consistent": len(issues) == 0, "issues": issues}
 ```
 
 **Manual verification protocol:**
 
-1. Write dimensions of every quantity in the expression using base dimensions [M], [L], [T], [Q], [Theta]
-2. Verify each additive term has identical dimensions
-3. Verify all exponents, arguments of exp/log/sin/cos are dimensionless
-4. Check that defined constants carry their correct dimensions (e.g., hbar has [M L^2 T^{-1}])
+1. Extract the PICO elements for every included study into a structured table
+2. Verify the Population is sufficiently similar (age, disease severity, comorbidities)
+3. Verify the Intervention is the same drug/dose/route/duration or that variation is pre-specified for subgroup analysis
+4. Verify the Comparator is consistent (placebo vs active control should not be mixed without justification)
+5. Verify the Outcome definition, measurement tool, and timepoint are compatible
+6. Verify the outcome direction is consistent (higher = better vs lower = better)
 
-**Concrete examples by subfield:**
+**Concrete examples by study type:**
 
-### QFT dimensional analysis
-
-```
-Electron self-energy Sigma(p):
-  - [Sigma] = [mass] = [M] (in natural units, [energy])
-  - At one loop: Sigma ~ alpha * m * log(Lambda/m)
-  - alpha is dimensionless, m has [M], log is dimensionless
-  - Common error: writing Sigma ~ alpha * Lambda (linear divergence has wrong structure for Dirac fermion)
-
-QED vertex correction Gamma^mu(p, p'):
-  - [Gamma^mu] = [dimensionless] (same as bare vertex gamma^mu in natural units)
-  - Must be: Gamma^mu = gamma^mu F_1(q^2) + (i*sigma^{mu nu}*q_nu / 2m) F_2(q^2)
-  - F_1, F_2 are dimensionless form factors
-  - q^2/m^2 is dimensionless argument
-
-Vacuum energy density:
-  - [rho_vac] = [energy/volume] = [M L^{-1} T^{-2}] = [M^4] in natural units
-  - Naive QFT: rho ~ Lambda^4 / (16*pi^2) -> [M^4]
-  - Observed: rho ~ (2.3 meV)^4 -- 120 orders of magnitude smaller
-```
-
-### Condensed matter dimensional analysis
+### Systematic review PICO checking
 
 ```
-Conductivity sigma:
-  - [sigma] = [Omega^{-1} m^{-1}] = [Q^2 T / (M L^3)]
-  - Drude: sigma = n e^2 tau / m -> [L^{-3}][Q^2][T][M^{-1}] = [Q^2 T / (M L^3)]
-  - Quantum of conductance: e^2/h -> [Q^2 T / (M L^2)] = [Omega^{-1}]
+Antihypertensive meta-analysis:
+  - P: Adults with essential hypertension (Stage 1-2)
+    Check: Excluding secondary hypertension? Consistent BP thresholds?
+    Common error: Mixing resistant hypertension with newly diagnosed
+  - I: ACE inhibitors (any)
+    Check: Same drug class? Same dose range? Monotherapy vs combination?
+    Common error: Pooling low-dose with high-dose without subgroup analysis
+  - C: Placebo or active comparator
+    Check: Never pool placebo-controlled with active-comparator trials
+    Common error: Mixing placebo and ARB comparators inflates ACEi effect
+  - O: Systolic BP reduction at 12 weeks (mmHg)
+    Check: Same measurement method? Office vs ambulatory?
+    Common error: Mixing office BP with 24h ambulatory BP means
 
-Superfluid density rho_s:
-  - [rho_s] = [M / (L T^2)] (London penetration depth: lambda_L^2 = m c^2 / (4*pi n_s e^2))
-  - Must vanish at T_c and equal total density at T = 0
-
-Magnetic susceptibility chi:
-  - [chi] = [dimensionless] (SI: chi = M/H, both [A/m])
-  - Curie law: chi = C/T -> C has dimensions [Kelvin] = [Theta]
-  - Pauli: chi ~ mu_B^2 N(E_F) -> [J/T]^2 [J^{-1} m^{-3}] = [J T^{-2} m^{-3}] ...
-    must check with mu_0 factor for SI consistency
+SSRI for depression meta-analysis:
+  - P: Adults with MDD (DSM or ICD criteria)
+    Check: Treatment-resistant vs first-episode? Severity at baseline?
+    Common error: Including dysthymia or adjustment disorder
+  - I: SSRI (any, therapeutic dose)
+    Check: What counts as therapeutic dose? Duration adequate?
+    Common error: Including sub-therapeutic doses or < 4 week trials
+  - C: Placebo
+    Check: Active placebo vs inert? Run-in period?
+    Common error: Ignoring placebo run-in that enriches responders
+  - O: Response (>=50% reduction in HAM-D or MADRS)
+    Check: Which scale? What threshold? Timepoint?
+    Common error: Mixing HAM-D response with remission (different thresholds)
 ```
 
-### Cosmology dimensional analysis
+### Meta-analysis PICO checking
 
 ```
-Friedmann equation:
-  H^2 = (8*pi*G/3)*rho
-  - [H] = [T^{-1}], [H^2] = [T^{-2}]
-  - [G rho] = [M^{-1} L^3 T^{-2}] * [M L^{-3}] = [T^{-2}]
-
-Hubble parameter today:
-  H_0 ~ 70 km/s/Mpc -> verify: [L T^{-1} L^{-1}] = [T^{-1}]
-  H_0 ~ 2.3e-18 s^{-1} -> Hubble time t_H ~ 4.4e17 s ~ 14 Gyr
-
-Power spectrum P(k):
-  - [P(k)] = [L^3] (3D), defined via <delta(k)delta(k')> = (2*pi)^3 delta^3(k-k') P(k)
-  - Dimensionless: Delta^2(k) = k^3 P(k) / (2*pi^2)
-  - Common confusion: the exponent is n_s - 1 in Delta^2(k), but n_s - 4 in P(k),
-    because Delta^2(k) = k^3 P(k)/(2*pi^2). Always verify which spectrum is being parameterized.
+Surgical intervention meta-analysis:
+  - P: Adults with knee osteoarthritis (KL grade 2-4)
+    Check: Consistent grading system? Same joint?
+    Common error: Mixing hip and knee OA studies
+  - I: Arthroscopic surgery
+    Check: Same procedure type? Debridement vs lavage vs meniscectomy?
+    Common error: Pooling fundamentally different surgical procedures
+  - C: Sham surgery or physiotherapy
+    Check: True sham (incision + no procedure) vs physio (active)?
+    Common error: Pooling sham-controlled with physio-controlled trials
+  - O: Pain (VAS 0-100) at 12 months
+    Check: Same pain scale? Same timepoint?
+    Common error: Mixing VAS (0-100mm) with NRS (0-10) without SMD
 ```
 
-**Common dimensional pitfalls:**
+**Common PICO pitfalls:**
 
-| Pitfall                                   | Example                                               | Detection                    |
-| ----------------------------------------- | ----------------------------------------------------- | ---------------------------- |
-| Missing factors of c                      | E = m instead of E = mc^2                             | [E] = [M] vs [M L^2 T^{-2}]  |
-| Missing factors of hbar                   | omega vs E                                            | [T^{-1}] vs [M L^2 T^{-2}]   |
-| Natural units leaking into SI expressions | Setting c=1 then plugging into SI formula             | Dimensions don't close       |
-| Confusing angular frequency and frequency | omega = 2*pi*f, different dimensions if units assumed | Check 2*pi factors           |
-| Temperature vs energy                     | k_B*T vs T                                            | [M L^2 T^{-2}] vs [Theta]    |
-| Metric signature convention               | g^{00} = +1 vs -1 flips sign of energy                | Check (-,+,+,+) vs (+,-,-,-) |
-| Fourier transform convention              | Factors of 2*pi in momentum-space expressions         | Check integral dk/(2*pi) vs integral dk |
-| Gaussian vs SI electrodynamics            | Factor of 4*pi*epsilon_0 present or absent            | e^2 vs e^2/(4*pi*epsilon_0)  |
+| Pitfall | Example | Detection |
+|---------|---------|-----------|
+| Population mixing | Adults + children pooled | Check age criteria in each study |
+| Dose heterogeneity | 5mg + 20mg + 80mg pooled as "drug X" | Tabulate doses, consider dose-response subgroup |
+| Comparator mixing | Placebo + active control pooled | Separate analysis by comparator type |
+| Outcome scale mixing | HAM-D + MADRS pooled as MD | Use SMD or convert via established linking |
+| Timepoint mixing | 4-week + 52-week pooled | Restrict to similar timepoints |
+| Setting mixing | Inpatient + outpatient pooled | Consider as source of heterogeneity |
+| Direction inconsistency | Some scales: high=better, others: low=better | Harmonize direction before pooling |
+| Definition creep | "Response" defined differently across studies | Tabulate exact definitions |
 
 **When to apply:**
 
-- Every derived equation (non-negotiable)
-- Every numerical expression before evaluation
-- When converting between unit systems
+- Every systematic review (non-negotiable: before any data extraction)
+- Every meta-analysis (before pooling any estimates)
+- Every network meta-analysis (transitivity assumption depends on PICO)
+- When updating a review with new studies
 
-</dimensional_analysis>
+</pico_consistency>
 
-<limiting_cases>
+<sensitivity_analysis>
 
-## Limiting Case Verification
+## Sensitivity Analysis Verification
 
-A correct general result must reproduce known special cases. If it doesn't, something is wrong.
+A correct overall result must be robust to methodological decisions. If it is not, the fragility must be reported.
 
-**Principle:** Take your general result and apply physically meaningful limits. The result must reduce to the known expression for that regime.
+**Principle:** Perform pre-specified sensitivity analyses to test whether the main finding changes when methodological decisions are varied. Fragile results that reverse or lose significance under reasonable alternative assumptions require cautious interpretation.
 
-**Standard limiting cases by domain:**
+**Standard sensitivity analyses for evidence synthesis:**
 
-### Classical limit (hbar -> 0)
-
-```
-Quantum result -> Classical result
-- Quantum partition function -> Boltzmann partition function
-- Schrodinger equation -> Hamilton-Jacobi equation (via WKB)
-- Commutators -> Poisson brackets (times i*hbar)
-- Bose-Einstein/Fermi-Dirac -> Maxwell-Boltzmann
-```
-
-### Non-relativistic limit (v/c -> 0, or c -> infinity)
+### Leave-one-out analysis
 
 ```
-Relativistic result -> Non-relativistic result
-- E = gamma*m*c^2 -> m*c^2 + p^2/(2m)
-- Dirac equation -> Pauli equation -> Schrodinger equation
-- Klein-Gordon -> Schrodinger (for positive-energy sector)
-- Relativistic dispersion -> p^2/(2m)
+Remove each study in turn and re-estimate the pooled effect.
+- If removing one study changes the conclusion: that study is influential.
+- Report the study, investigate why (largest sample? outlier effect? high RoB?).
+- Decision: Is the influential study driving the result legitimately or due to bias?
+
+Expected behavior: Point estimate shifts modestly, CI widens slightly.
+Red flag: Conclusion reverses or effect size changes by >30% when removing one study.
 ```
 
-### Weak-coupling limit (g -> 0)
+### Model comparison
 
 ```
-Interacting result -> Free/non-interacting result
-- Full propagator -> Free propagator
-- Interacting ground state energy -> sum of single-particle energies
-- Scattering amplitude -> Born approximation
-- RG beta function -> one-loop result
+Compare results under different statistical models:
+- Fixed-effect (Mantel-Haenszel) vs Random-effects (DerSimonian-Laird)
+- Random-effects with different estimators (REML, PM, DL, HKSJ)
+- Bayesian vs frequentist
+- Different effect measures (OR vs RR vs RD for binary; MD vs SMD for continuous)
+
+Expected behavior: Direction and approximate magnitude agree across models.
+Red flag: Fixed-effect significant but random-effects not (suggests heterogeneity
+is driving the fixed-effect result via larger studies).
 ```
 
-### Large-N limit
+### Risk of bias sensitivity
 
 ```
-Finite-N result -> Analytical large-N result
-- Matrix model -> saddle-point
-- SU(N) gauge theory -> planar diagrams
-- Statistical mechanics -> mean-field
+Restrict analysis to low risk-of-bias studies only:
+- Run main analysis on all studies
+- Run restricted analysis on low-RoB studies only
+- Compare results
+
+Expected behavior: Similar direction and magnitude, possibly wider CI.
+Red flag: Effect disappears or reverses when high-RoB studies are excluded
+(suggests bias is inflating the effect).
 ```
 
-### Thermodynamic limits
+### Publication bias sensitivity
 
 ```
-T -> 0: System should reach ground state
-T -> infinity: Equipartition, maximum entropy
-N -> infinity: Thermodynamic limit, extensive quantities scale with N
+Assess the impact of potential missing studies:
+- Funnel plot visual inspection
+- Egger's test for small-study effects
+- Trim-and-fill adjusted estimate
+- Selection model approaches (Copas, Vevea-Hedges)
+- P-curve or Z-curve for evidential value
+
+Expected behavior: Symmetrical funnel, non-significant Egger's test.
+Red flag: Asymmetrical funnel, significant Egger's test (p < 0.10),
+trim-and-fill substantially reduces the effect.
 ```
 
-### Continuum limit (lattice spacing a -> 0)
+### Outcome definition sensitivity
 
 ```
-Lattice result -> Continuum result
-- Lattice dispersion 2(1-cos(ka))/a^2 -> k^2
-- Wilson fermions -> Dirac fermions (doubler-free)
-- Lattice gauge theory -> continuum Yang-Mills
-- Key: physical quantities must be independent of a in the continuum limit
-- Renormalization: bare couplings flow with a to keep physics fixed
-```
+Vary the outcome definition:
+- Per-protocol vs intention-to-treat analysis
+- Different timepoints (e.g., 6 months vs 12 months)
+- Different outcome thresholds (e.g., 50% vs 30% pain reduction)
+- Continuous vs dichotomized outcome
 
-### Strong-coupling limit (g -> infinity)
-
-```
-Interacting result -> Strong-coupling result
-- Lattice gauge theory -> strong-coupling expansion (confinement manifest)
-- Hubbard model (U/t -> infinity) -> Heisenberg model (t-J model)
-- AdS/CFT: strong-coupling field theory -> classical gravity
-- BCS -> BEC crossover: weak coupling BCS -> strong coupling BEC
-```
-
-### Geometric/spatial limits
-
-```
-r -> 0: Short-distance behavior (UV)
-r -> infinity: Long-distance behavior (IR)
-d -> 1, 2, 3, 4: Specific dimensionality results
-Flat space limit: Curved space -> Minkowski (R_{mu nu rho sigma} -> 0)
-Homogeneous limit: Spatially varying -> uniform (k -> 0 of response functions)
-Single-site limit: Lattice -> isolated site (hopping t -> 0)
-```
-
-### Adiabatic / sudden limits
-
-```
-Slow perturbation (omega -> 0): Adiabatic theorem, system follows instantaneous eigenstate
-Fast perturbation (omega -> infinity): Sudden approximation, state unchanged
-Intermediate: Full time-dependent perturbation theory required
-Born-Oppenheimer: m_e/M -> 0, electrons follow nuclei adiabatically
+Expected behavior: Consistent direction across definitions.
+Red flag: ITT shows benefit but per-protocol does not (or vice versa).
 ```
 
 **Verification protocol:**
 
 ```python
-def verify_limiting_case(general_result, limit_params, expected_limit):
+import numpy as np
+
+def verify_sensitivity_robustness(main_estimate, main_ci,
+                                   sensitivity_estimates, sensitivity_cis,
+                                   labels, significance_threshold=0.05):
     """
-    Apply limit to general result and compare with known expression.
+    Check that sensitivity analyses support the main finding.
 
     Args:
-        general_result: Symbolic expression for the general case
-        limit_params: Dict of {symbol: limit_value} e.g., {hbar: 0, c: oo}
-        expected_limit: Known result in the limiting regime
+        main_estimate: Point estimate from primary analysis
+        main_ci: (lower, upper) confidence interval
+        sensitivity_estimates: List of point estimates from sensitivity analyses
+        sensitivity_cis: List of (lower, upper) CIs
+        labels: List of sensitivity analysis names
     """
-    limited = general_result
-    for param, value in limit_params.items():
-        limited = sympy.limit(limited, param, value)
-    limited = sympy.simplify(limited)
-    expected = sympy.simplify(expected_limit)
-    assert limited == expected, (
-        f"Limiting case failed:\n"
-        f"  General result in limit: {limited}\n"
-        f"  Expected: {expected}"
-    )
+    main_significant = (main_ci[0] > 0) or (main_ci[1] < 0)  # CI excludes null
+    main_direction = "benefit" if main_estimate < 0 else "harm"  # Assuming lower=better
+
+    results = []
+    for est, ci, label in zip(sensitivity_estimates, sensitivity_cis, labels):
+        sens_significant = (ci[0] > 0) or (ci[1] < 0)
+        sens_direction = "benefit" if est < 0 else "harm"
+        direction_consistent = (sens_direction == main_direction)
+        significance_consistent = (sens_significant == main_significant)
+
+        change_pct = abs(est - main_estimate) / max(abs(main_estimate), 1e-10) * 100
+
+        status = "PASS"
+        if not direction_consistent:
+            status = "FAIL"
+        elif change_pct > 30:
+            status = "WARN"
+        elif not significance_consistent:
+            status = "WARN"
+
+        results.append({
+            "analysis": label,
+            "estimate": est,
+            "ci": ci,
+            "direction_consistent": direction_consistent,
+            "significance_consistent": significance_consistent,
+            "change_pct": change_pct,
+            "status": status,
+        })
+
+    return results
 ```
 
 **When to apply:**
 
-- After every derivation of a general formula
-- When extending known results to new regimes
-- When combining results from different approximation schemes
+- After every meta-analysis (non-negotiable)
+- After every primary analysis in a systematic review
+- When heterogeneity is moderate or high (I-squared > 50%)
+- When the number of included studies is small (< 10)
+- When risk of bias varies substantially across studies
 
-</limiting_cases>
+</sensitivity_analysis>
 
-<symmetry_verification>
+<risk_of_bias>
 
-## Symmetry Verification
+## Risk of Bias Assessment Verification
 
-Physical results must respect the symmetries of the theory. Broken symmetries indicate errors (or genuine physics that must be explained).
+Individual study quality directly affects the reliability of the synthesis. Risk of bias must be assessed systematically and its impact on the pooled estimate evaluated.
 
-**Principle:** If the Lagrangian/Hamiltonian has a symmetry, physical observables must reflect that symmetry unless spontaneous or explicit breaking is expected and understood.
+**Principle:** Every included study must be assessed for risk of bias using a validated, domain-appropriate tool. The assessment must be transparent, reproducible, and its impact on the synthesis quantified.
 
-**Key symmetries to verify:**
+**Key risk of bias tools:**
 
-### Gauge invariance
-
-```
-- Electromagnetic: Results independent of gauge choice (Coulomb, Lorenz, axial, etc.)
-- Non-Abelian: Results independent of gauge-fixing parameter xi
-- Observable quantities must be gauge-invariant
-- Green's functions can be gauge-dependent (but Ward identities constrain them)
-```
-
-**Check:** Compute the same observable in two different gauges. Results must agree.
-
-### Lorentz/Poincare invariance
+### RoB 2 (Randomized trials)
 
 ```
-- Scalar quantities must transform as scalars
-- 4-vectors must transform correctly under boosts and rotations
-- Cross sections must be Lorentz-invariant (when expressed in invariant variables s, t, u)
-- No preferred frame artifacts in final results
+Cochrane Risk of Bias 2 tool — five domains:
+1. Randomization process
+   - Was the allocation sequence random?
+   - Was allocation concealed?
+   - Were there baseline imbalances suggesting problems?
+
+2. Deviations from intended interventions
+   - Were participants aware of assignment?
+   - Were there deviations due to the trial context?
+   - Was an appropriate analysis used (ITT)?
+
+3. Missing outcome data
+   - Were outcome data available for all or nearly all participants?
+   - Could missingness depend on the true value?
+   - Was missingness handled appropriately?
+
+4. Outcome measurement
+   - Was the method appropriate?
+   - Could measurement differ between groups?
+   - Were assessors blinded?
+
+5. Selection of reported result
+   - Was the reported result pre-specified?
+   - Were multiple eligible analyses performed?
+   - Were multiple eligible outcomes measured?
+
+Each domain: Low / Some concerns / High risk
+Overall: Lowest domain = overall (worst-case approach)
 ```
 
-**Check:** Express result in manifestly covariant form. If you can't, suspect an error.
-
-### CPT symmetry
+### ROBINS-I (Non-randomized studies)
 
 ```
-- C (charge conjugation): Particle <-> antiparticle
-- P (parity): x -> -x
-- T (time reversal): t -> -t
-- CPT combined: Always conserved in local QFT
+Risk Of Bias In Non-randomized Studies of Interventions — seven domains:
+1. Confounding
+2. Selection of participants
+3. Classification of interventions
+4. Deviations from intended interventions
+5. Missing data
+6. Measurement of outcomes
+7. Selection of reported result
+
+Each domain: Low / Moderate / Serious / Critical / No information
+Overall: Determined by worst domain
 ```
 
-### Discrete symmetries
+### QUADAS-2 (Diagnostic accuracy studies)
 
 ```
-- Parity: Check even/odd behavior under spatial inversion
-- Time reversal: Check behavior under t -> -t
-- Particle exchange: Bosonic (symmetric) vs Fermionic (antisymmetric) wavefunctions
+Quality Assessment of Diagnostic Accuracy Studies — four domains:
+1. Patient selection (consecutive/random? Case-control avoided? Inappropriate exclusions?)
+2. Index test (pre-specified threshold? Blinded to reference?)
+3. Reference standard (correct classification? Blinded to index?)
+4. Flow and timing (appropriate interval? All patients receive both tests? All included in analysis?)
 ```
 
-### Conformal symmetry
+**Automated checks:**
 
-```
-At critical points and in CFTs:
-- Scale invariance: Correlation functions are power laws
-- Conformal Ward identities constrain 2-point and 3-point functions completely
-- Unitarity bounds on scaling dimensions: Delta >= (d-2)/2 for scalars
-- Central charge c > 0 (2D), a-theorem a_UV > a_IR (4D)
-```
+```python
+def verify_risk_of_bias_assessment(rob_data: list[dict],
+                                     tool: str = "RoB2") -> dict:
+    """Verify risk of bias assessment completeness and consistency.
 
-### Internal symmetries
+    Args:
+        rob_data: List of study RoB assessments, each with domain scores
+        tool: "RoB2", "ROBINS-I", or "QUADAS-2"
+    """
+    issues = []
 
-```
-- Flavor symmetry: SU(2) isospin, SU(3) flavor
-- Chiral symmetry: Left-right decomposition
-- Global U(1): Charge conservation, baryon number, lepton number
-- Supersymmetry (if applicable): Boson-fermion mass degeneracy, non-renormalization theorems
+    # Define expected domains per tool
+    domains = {
+        "RoB2": ["randomization", "deviations", "missing_data",
+                  "measurement", "reporting"],
+        "ROBINS-I": ["confounding", "selection", "classification",
+                      "deviations", "missing_data", "measurement", "reporting"],
+        "QUADAS-2": ["patient_selection", "index_test",
+                      "reference_standard", "flow_timing"],
+    }
+
+    expected_domains = domains.get(tool, [])
+
+    for study in rob_data:
+        study_id = study.get("study_id", "unknown")
+
+        # Check all domains assessed
+        for domain in expected_domains:
+            if domain not in study:
+                issues.append(
+                    f"{study_id}: Missing assessment for domain '{domain}'"
+                )
+
+        # Check overall judgment consistency
+        domain_scores = [study.get(d) for d in expected_domains if d in study]
+        if tool == "RoB2":
+            valid_scores = {"low", "some_concerns", "high"}
+            for d in expected_domains:
+                score = study.get(d)
+                if score and score not in valid_scores:
+                    issues.append(
+                        f"{study_id}: Invalid score '{score}' for {d}"
+                    )
+
+            # Overall should be at least as bad as worst domain
+            worst = "low"
+            for score in domain_scores:
+                if score == "high":
+                    worst = "high"
+                elif score == "some_concerns" and worst == "low":
+                    worst = "some_concerns"
+            if study.get("overall") and study["overall"] != worst:
+                issues.append(
+                    f"{study_id}: Overall '{study['overall']}' inconsistent "
+                    f"with worst domain '{worst}'"
+                )
+
+        # Check for supporting justification
+        if not study.get("justification"):
+            issues.append(f"{study_id}: No justification text provided")
+
+    return {"complete": len(issues) == 0, "issues": issues}
 ```
 
 **Verification protocol:**
 
-```python
-def verify_symmetry(expression, transformation, expected_behavior="invariant"):
-    """
-    Apply symmetry transformation and check behavior.
-
-    Args:
-        expression: The physics expression to check
-        transformation: Dict mapping {old_symbol: new_expression}
-        expected_behavior: "invariant", "covariant", "sign_flip", "phase"
-    """
-    transformed = expression.subs(transformation)
-    transformed = sympy.simplify(transformed)
-    original = sympy.simplify(expression)
-
-    if expected_behavior == "invariant":
-        assert transformed == original
-    elif expected_behavior == "sign_flip":
-        assert transformed == -original
-    elif expected_behavior == "phase":
-        ratio = sympy.simplify(transformed / original)
-        assert abs(ratio) == 1  # Phase factor
-```
+1. Confirm the correct RoB tool was used for the study design (RoB 2 for RCTs, ROBINS-I for non-randomized, QUADAS-2 for diagnostic)
+2. Verify all domains are assessed for every study (no missing domains)
+3. Verify overall judgment is consistent with domain-level judgments
+4. Verify supporting justification is provided for each domain judgment
+5. Verify inter-rater agreement was assessed (at least 2 reviewers, kappa reported)
+6. Verify the impact of RoB on the synthesis was explored (sensitivity analysis excluding high-RoB studies)
 
 **When to apply:**
 
-- After constructing any Lagrangian or Hamiltonian
-- After computing scattering amplitudes or cross sections
-- When results look frame-dependent or gauge-dependent
-- When particle-antiparticle results differ unexpectedly
+- Every systematic review (non-negotiable)
+- After constructing evidence tables
+- Before interpreting pooled estimates
+- When results are driven by studies with high or unclear risk of bias
 
-</symmetry_verification>
+</risk_of_bias>
 
-<conservation_laws>
+<grade_certainty>
 
-## Conservation Law Verification
+## GRADE Certainty Evaluation
 
-Conserved quantities must actually be conserved by your calculation. Violations indicate either errors or new physics that must be justified.
+The overall certainty of evidence determines how much confidence we can place in the effect estimate. GRADE provides a structured, transparent framework.
 
-**Principle:** For every continuous symmetry (Noether's theorem), there is a conserved current. Check that your results respect all expected conservation laws.
+**Principle:** For each outcome, rate the certainty of evidence as High, Moderate, Low, or Very Low by starting at the default level (High for RCTs, Low for observational) and downgrading or upgrading based on specific criteria.
 
-**Fundamental conservation laws:**
+**GRADE domains for downgrading (RCTs start at High):**
 
-| Conserved Quantity | Associated Symmetry  | When Violated                      |
-| ------------------ | -------------------- | ---------------------------------- |
-| Energy             | Time translation     | Never (in closed systems)          |
-| Momentum           | Space translation    | External fields present            |
-| Angular momentum   | Rotational symmetry  | Non-central forces                 |
-| Electric charge    | U(1)\_EM gauge       | Never (exactly)                    |
-| Baryon number      | U(1)\_B global       | Sphaleron processes, GUT           |
-| Lepton number      | U(1)\_L global       | Neutrino oscillations, GUT         |
-| Color charge       | SU(3) gauge          | Never (confinement)                |
-| CPT                | Lorentz + QFT axioms | Never (in local QFT)               |
-| Probability        | Unitarity            | Truncation errors, non-Hermitian H |
+```
+1. Risk of bias (study limitations)
+   - Downgrade if: Majority of evidence is at high or unclear RoB
+   - Do not downgrade if: Low RoB studies dominate the pooled estimate
+   - Key: Consider the weight of high-RoB studies in the meta-analysis
 
-**Numerical conservation checks:**
+2. Inconsistency (heterogeneity)
+   - Downgrade if: I-squared > 50-75% with unexplained heterogeneity
+   - Downgrade if: Point estimates vary widely in direction or magnitude
+   - Do not downgrade if: All studies show same direction, I-squared < 40%
+   - Key: Prediction interval crossing the null is more informative than I-squared alone
+
+3. Indirectness
+   - Downgrade if: Population, intervention, comparator, or outcome
+     differs from the target question
+   - Downgrade if: Only surrogate outcomes available (BP instead of stroke)
+   - Do not downgrade if: Studies directly address the review question
+   - Key: Surrogate outcomes warrant downgrade even if well-validated
+
+4. Imprecision
+   - Downgrade if: Confidence interval crosses the clinical decision threshold
+   - Downgrade if: Optimal Information Size (OIS) not met
+   - Downgrade if: Few events (< 300 for binary outcomes as rule of thumb)
+   - Key: OIS = sample size a single adequately powered trial would need
+
+5. Publication bias
+   - Downgrade if: Funnel plot asymmetry + significant Egger's test
+   - Downgrade if: Industry-funded studies overrepresented
+   - Downgrade if: Small number of small studies (< 10 studies)
+   - Do not downgrade if: Comprehensive search + funnel symmetry
+   - Key: Cannot assess with < 10 studies; note limitation instead
+```
+
+**GRADE domains for upgrading (observational start at Low):**
+
+```
+1. Large magnitude of effect
+   - Upgrade if: RR > 2 or RR < 0.5 (one level)
+   - Upgrade if: RR > 5 or RR < 0.2 (two levels)
+   - Key: Only if no plausible confounders could explain the magnitude
+
+2. Dose-response gradient
+   - Upgrade if: Clear dose-response relationship
+   - Key: Biological plausibility must support the gradient
+
+3. All plausible confounders would reduce the effect
+   - Upgrade if: Residual confounding would bias TOWARD the null
+   - Key: This is the most conservative upgrade criterion
+```
+
+**Automated checks:**
 
 ```python
-def verify_energy_conservation(trajectory, hamiltonian, tolerance=1e-8):
-    """Check energy is conserved along a trajectory."""
-    energies = [hamiltonian(state) for state in trajectory]
-    E0 = energies[0]
-    max_drift = max(abs(E - E0) / abs(E0) for E in energies)
-    assert max_drift < tolerance, (
-        f"Energy conservation violated: max relative drift = {max_drift:.2e}"
-    )
+def verify_grade_assessment(grade_data: dict) -> dict:
+    """Verify GRADE assessment completeness and internal consistency.
 
-def verify_probability_conservation(density_matrix_trajectory, tolerance=1e-10):
-    """Check Tr(rho) = 1 throughout evolution."""
-    for t, rho in density_matrix_trajectory:
-        trace = np.trace(rho)
-        assert abs(trace - 1.0) < tolerance, (
-            f"Probability not conserved at t={t}: Tr(rho) = {trace}"
+    Args:
+        grade_data: Dict with keys: study_design, risk_of_bias,
+            inconsistency, indirectness, imprecision, publication_bias,
+            large_effect, dose_response, confounders_reduce,
+            overall_certainty
+    """
+    issues = []
+
+    # Starting level
+    if grade_data["study_design"] == "RCT":
+        starting_level = 4  # High
+    elif grade_data["study_design"] == "observational":
+        starting_level = 2  # Low
+    else:
+        issues.append(f"Unknown study design: {grade_data['study_design']}")
+        starting_level = 2
+
+    # Count downgrades
+    downgrade_domains = [
+        "risk_of_bias", "inconsistency", "indirectness",
+        "imprecision", "publication_bias"
+    ]
+    total_downgrades = 0
+    for domain in downgrade_domains:
+        level = grade_data.get(domain, 0)
+        if level not in [0, -1, -2]:
+            issues.append(f"Invalid downgrade for {domain}: {level}")
+        total_downgrades += abs(level)
+
+    # Count upgrades (only for observational)
+    upgrade_domains = ["large_effect", "dose_response", "confounders_reduce"]
+    total_upgrades = 0
+    for domain in upgrade_domains:
+        level = grade_data.get(domain, 0)
+        if grade_data["study_design"] == "RCT" and level > 0:
+            issues.append(f"Upgrade '{domain}' applied to RCT evidence — unusual")
+        total_upgrades += level
+
+    # Calculate expected level
+    expected_level = max(1, min(4, starting_level - total_downgrades + total_upgrades))
+    level_names = {1: "Very Low", 2: "Low", 3: "Moderate", 4: "High"}
+    expected_name = level_names.get(expected_level, "Unknown")
+
+    stated = grade_data.get("overall_certainty", "")
+    if stated and stated != expected_name:
+        issues.append(
+            f"Stated certainty '{stated}' does not match calculated "
+            f"'{expected_name}' (start={starting_level}, "
+            f"downgrades={total_downgrades}, upgrades={total_upgrades})"
         )
 
-def verify_current_conservation(j_mu, spacetime_grid, tolerance=1e-8):
-    """Check d_mu j^mu = 0 (continuity equation)."""
-    divergence = compute_4divergence(j_mu, spacetime_grid)
-    max_violation = np.max(np.abs(divergence))
-    assert max_violation < tolerance, (
-        f"Current conservation violated: max |d_mu j^mu| = {max_violation:.2e}"
-    )
+    # Check all domains assessed
+    for domain in downgrade_domains:
+        if domain not in grade_data:
+            issues.append(f"Missing GRADE domain: {domain}")
 
-def verify_unitarity(S_matrix, tolerance=1e-10):
-    """Check S^dagger S = I (probability conservation in scattering)."""
-    product = S_matrix.conj().T @ S_matrix
-    identity = np.eye(S_matrix.shape[0])
-    deviation = np.max(np.abs(product - identity))
-    assert deviation < tolerance, (
-        f"Unitarity violated: max |S^dag S - I| = {deviation:.2e}"
-    )
+    # Check justification
+    if not grade_data.get("justification"):
+        issues.append("No justification text for GRADE assessment")
+
+    return {
+        "valid": len(issues) == 0,
+        "expected_certainty": expected_name,
+        "issues": issues
+    }
 ```
-
-**Analytical conservation checks:**
-
-1. Compute the time derivative of the supposedly conserved quantity
-2. Use equations of motion to simplify
-3. Verify the result is exactly zero (or zero up to the expected anomaly)
 
 **When to apply:**
 
-- Every numerical simulation (energy, momentum, particle number)
-- Every scattering calculation (unitarity, crossing symmetry)
-- Every quantum evolution (probability conservation, norm preservation)
-- When adding interactions (check which conservation laws survive)
+- Every systematic review outcome (non-negotiable per Cochrane, AHRQ, WHO)
+- After completing the meta-analysis and sensitivity analyses
+- Before writing the summary of findings table
+- When communicating results to clinical guideline panels
 
-</conservation_laws>
+</grade_certainty>
 
-<order_of_magnitude>
+<statistical_validity>
 
-## Order-of-Magnitude Estimation
+## Statistical Validity Verification
 
-Before trusting a detailed calculation, estimate the answer to within a factor of 10. If the detailed result differs by orders of magnitude from the estimate, something is likely wrong.
+Even if the clinical question and evidence are sound, the statistical analysis must be appropriate and its assumptions met.
 
-**Principle:** Physics problems usually have a natural scale set by the relevant dimensionful parameters. The answer should be within an order of magnitude of this natural scale.
+**Principle:** Every statistical test has assumptions. Violating them does not always invalidate results, but the impact must be understood and reported. Key areas: model assumptions, multiplicity, power, and appropriate effect measures.
 
-**Estimation techniques:**
+**Key statistical checks:**
 
-### Dimensional analysis estimation
-
-```
-Given the relevant parameters, construct the unique combination with the right dimensions.
-
-Example: Ground state energy of hydrogen
-- Relevant parameters: m_e, e, hbar
-- Energy has dimensions [M L^2 T^{-2}]
-- Unique combination: m_e * e^4 / hbar^2 ~ 27 eV (Hartree)
-- Actual: 13.6 eV (factor of 2 from detailed calculation)
-```
-
-### Characteristic scale estimation
+### Assumption checking for meta-analysis
 
 ```
-Identify the characteristic scales of the problem:
-- Length: Bohr radius a_0 = hbar^2 / (m_e * e^2) ~ 0.5 Angstrom
-- Energy: Hartree E_h = m_e * e^4 / hbar^2 ~ 27 eV
-- Time: hbar / E_h ~ 2.4e-17 s
+Random-effects model assumptions:
+  - True effects are normally distributed across studies
+    Check: Profile likelihood, permutation test for heterogeneity
+    Violation impact: Moderate (DL is robust to mild non-normality)
 
-Any atomic physics result should be expressible as a dimensionless number times the
-appropriate power of these scales.
+  - Within-study variances are known (not estimated)
+    Check: Large studies (>100 per arm) approximate this well
+    Violation impact: Use Hartung-Knapp-Sidik-Jonkman (HKSJ) adjustment
+    for small meta-analyses (< 5 studies) — standard DL is anti-conservative
+
+  - Independence of effect estimates across studies
+    Check: Are studies from the same research group? Multi-arm trials?
+    Violation impact: Underestimated standard error; use robust variance
+    estimation or multivariate methods for dependent estimates
+
+Fixed-effect model assumptions:
+  - One true effect across all studies (no heterogeneity)
+    Check: I-squared, Q statistic, prediction interval
+    Violation impact: CI too narrow, misleading precision
+    Key: Even I-squared = 0% doesn't prove homogeneity with few studies
 ```
 
-### Fermi estimation
+### Effect measure appropriateness
 
 ```
-Break the problem into factors you can estimate individually:
+Binary outcomes:
+  - Risk ratio (RR): Interpretable, consistent across baseline risks
+    When: Event rate < 20%, or event rate similar across studies
+  - Odds ratio (OR): Mathematically convenient, symmetric
+    When: Case-control studies, logistic regression, rare events
+  - Risk difference (RD): Clinically intuitive (NNT = 1/RD)
+    When: Baseline risk matters for decision-making
+  - Hazard ratio (HR): Time-to-event data
+    When: Survival analysis, varying follow-up
 
-Example: Mean free path of a photon in the Sun's core
-- Density: ~150 g/cm^3
-- Temperature: ~15 million K -> mostly ionized hydrogen
-- Cross section: Thomson ~ 6.65e-25 cm^2
-- Number density: 150 / m_p ~ 9e25 cm^{-3}
-- Mean free path: 1 / (n * sigma) ~ 1 / (9e25 * 6.65e-25) ~ 0.02 cm
+  Common error: Using OR when events are common (>20%) and
+  interpreting as RR. OR overestimates RR when events are common.
+  Correction: RR = OR / (1 - p_control + p_control * OR)
+
+Continuous outcomes:
+  - Mean difference (MD): Same measurement scale across studies
+    When: All studies use the same instrument (e.g., all use HAM-D)
+  - Standardized mean difference (SMD): Different scales
+    When: Different instruments measure the same construct
+    Hedges' g preferred over Cohen's d (bias correction for small N)
+  - Ratio of means: When proportional change is meaningful
+    When: Lab values, biological measurements
+
+  Common error: Using MD when scales differ (e.g., mixing VAS 0-100
+  with NRS 0-10). Result is uninterpretable.
+  Common error: Forgetting Hedges' g correction for small samples
+  (Cohen's d overestimates effect in small studies).
 ```
 
-**Verification protocol:**
+### Power analysis
 
 ```python
-def order_of_magnitude_check(detailed_result, estimate, max_orders=2):
+def verify_meta_analysis_power(studies, effect_size, alpha=0.05, power_target=0.80):
     """
-    Check that detailed result is within max_orders of magnitude of estimate.
-    """
-    if estimate == 0 or detailed_result == 0:
-        return  # Can't compare orders of magnitude with zero
+    Check whether the meta-analysis has adequate statistical power.
 
-    log_ratio = abs(np.log10(abs(detailed_result / estimate)))
-    status = "pass" if log_ratio < max_orders else "FAIL"
-    print(f"{status} Order-of-magnitude: detailed={detailed_result:.2e}, "
-          f"estimate={estimate:.2e}, ratio=10^{log_ratio:.1f}")
+    Optimal Information Size (OIS): the total sample size that a single
+    trial would need to detect the target effect at the specified power.
+
+    Args:
+        studies: List of dicts with 'n_treatment' and 'n_control'
+        effect_size: Clinically meaningful effect size to detect
+        alpha: Significance level
+        power_target: Desired power
+    """
+    from scipy.stats import norm
+    import numpy as np
+
+    # Total sample size in meta-analysis
+    total_n = sum(s['n_treatment'] + s['n_control'] for s in studies)
+
+    # OIS for continuous outcome (two-sample z-test approximation)
+    z_alpha = norm.ppf(1 - alpha / 2)
+    z_beta = norm.ppf(power_target)
+    ois_per_arm = 2 * ((z_alpha + z_beta) / effect_size) ** 2
+    ois_total = 2 * ois_per_arm
+
+    # Adjust for heterogeneity (multiply OIS by 1 / (1 - I_squared))
+    # This is approximate but gives the right order of magnitude
+
+    powered = total_n >= ois_total
+    status = "PASS" if powered else "WARN"
+    print(f"{status} Power check: total N = {total_n}, OIS = {ois_total:.0f}")
+    print(f"  Meta-analysis {'meets' if powered else 'does NOT meet'} OIS")
+    return powered
+```
+
+### Multiple comparisons
+
+```
+When testing multiple outcomes, subgroups, or timepoints:
+
+  - Pre-specify primary outcome and analysis
+  - Adjust alpha for multiple primary outcomes (Bonferroni, Holm, FDR)
+  - Label secondary outcomes as exploratory
+  - Distinguish confirmatory from exploratory subgroup analyses
+
+  Common error: Testing 10 subgroups at alpha=0.05 and reporting
+  the one significant result as a "finding" (p-hacking).
+  Expected false positives: 0.5 out of 10 tests at alpha=0.05.
+
+  Common error: Changing the primary outcome after seeing results
+  (outcome switching). Detectable by comparing protocol to publication.
+
+  Red flag: Subgroup analysis that was not pre-specified shows a
+  significant interaction while the overall result is null.
+```
+
+### Heterogeneity assessment
+
+```python
+def verify_heterogeneity(effect_sizes, variances, model="RE"):
+    """
+    Assess and verify heterogeneity statistics.
+
+    Returns Q, I-squared, tau-squared, H-squared, prediction interval.
+    """
+    import numpy as np
+
+    k = len(effect_sizes)
+    weights = 1.0 / np.array(variances)
+    weighted_mean = np.sum(weights * np.array(effect_sizes)) / np.sum(weights)
+
+    # Cochran's Q
+    Q = np.sum(weights * (np.array(effect_sizes) - weighted_mean) ** 2)
+    df = k - 1
+    # p-value from chi-squared distribution
+    from scipy.stats import chi2
+    p_Q = 1 - chi2.cdf(Q, df)
+
+    # I-squared
+    I_sq = max(0, (Q - df) / Q * 100) if Q > 0 else 0
+
+    # Tau-squared (DerSimonian-Laird)
+    C = np.sum(weights) - np.sum(weights ** 2) / np.sum(weights)
+    tau_sq = max(0, (Q - df) / C)
+
+    # Prediction interval (where the true effect in a NEW study might lie)
+    se_pooled = np.sqrt(1.0 / np.sum(weights))
+    from scipy.stats import t as t_dist
+    t_crit = t_dist.ppf(0.975, df=max(k - 2, 1))
+    pi_lower = weighted_mean - t_crit * np.sqrt(tau_sq + se_pooled ** 2)
+    pi_upper = weighted_mean + t_crit * np.sqrt(tau_sq + se_pooled ** 2)
+
+    # Interpretation
+    if I_sq < 25:
+        heterogeneity_level = "low"
+    elif I_sq < 50:
+        heterogeneity_level = "moderate"
+    elif I_sq < 75:
+        heterogeneity_level = "substantial"
+    else:
+        heterogeneity_level = "considerable"
+
+    print(f"Heterogeneity assessment (k={k} studies):")
+    print(f"  Q = {Q:.2f}, df = {df}, p = {p_Q:.4f}")
+    print(f"  I-squared = {I_sq:.1f}% ({heterogeneity_level})")
+    print(f"  tau-squared = {tau_sq:.4f}")
+    print(f"  Prediction interval: [{pi_lower:.3f}, {pi_upper:.3f}]")
+
+    issues = []
+    if I_sq > 75 and p_Q < 0.10:
+        issues.append("Considerable heterogeneity — explore sources before pooling")
+    if k < 5:
+        issues.append("Few studies — heterogeneity estimates imprecise, "
+                      "consider HKSJ method")
+    if (pi_lower < 0 < pi_upper) and not (weighted_mean > pi_lower and weighted_mean < pi_upper):
+        issues.append("Prediction interval crosses null — the effect in a "
+                      "new study setting could go either way")
+
+    return {
+        "Q": Q, "p_Q": p_Q, "I_squared": I_sq, "tau_squared": tau_sq,
+        "prediction_interval": (pi_lower, pi_upper),
+        "heterogeneity_level": heterogeneity_level,
+        "issues": issues
+    }
 ```
 
 **When to apply:**
 
-- Before starting any detailed calculation (set expectations)
-- After completing a calculation (sanity check)
-- When a result "feels wrong" but you can't immediately see the error
-- When presenting results to collaborators (builds confidence)
+- Every meta-analysis (model selection, effect measure, heterogeneity)
+- Every statistical test (assumption checking)
+- Every subgroup analysis (multiple comparisons, interaction tests)
+- Before reporting any p-value or confidence interval
 
-</order_of_magnitude>
+</statistical_validity>
 
-<physical_plausibility>
+<clinical_plausibility>
 
-## Physical Plausibility Checks
+## Clinical Plausibility Checks
 
-Even if a calculation is internally consistent, the result must make physical sense.
+Even if a result is statistically significant and methodologically sound, it must make clinical and biological sense.
 
-**Principle:** Physics imposes constraints beyond dimensional analysis. Masses must be positive, probabilities must be between 0 and 1, entropy must increase, and so on.
+**Principle:** Medical research results exist within a web of biological mechanisms, clinical experience, and prior evidence. A new result should be consistent with established knowledge or, if surprising, the novelty must be justified.
 
 **Universal plausibility checks:**
 
-| Check                               | Condition                                    | If Violated                 |
-| ----------------------------------- | -------------------------------------------- | --------------------------- |
-| Positivity of energy (ground state) | E_0 >= E_min (for bounded-below systems)     | Check for sign errors       |
-| Probability bounds                  | 0 <= P <= 1 for all probabilities            | Check normalization         |
-| Entropy direction                   | S >= 0, dS/dt >= 0 (isolated system)         | Check second law compliance |
-| Causality                           | No superluminal signaling                    | Check light cone structure  |
-| Stability                           | Perturbations don't grow unboundedly         | Check eigenvalue signs      |
-| Hermiticity                         | Observables have real expectation values      | Check operator adjoint      |
-| Positivity of cross sections        | sigma >= 0                                   | Check phase space factors   |
-| Correct high/low temperature limits | C_V -> 0 as T -> 0, equipartition as T -> inf | Check statistical mechanics |
-| Correct asymptotic behavior         | Wavefunctions -> 0 at infinity (bound states) | Check boundary conditions   |
-| Spectral properties                 | Eigenvalues of Hermitian operators are real   | Check numerical precision   |
+| Check | Condition | If Violated |
+|-------|-----------|-------------|
+| Effect size magnitude | Within historical range for the intervention class | Check for data extraction errors, unit errors |
+| Effect direction | Consistent with known mechanism of action | Check PICO, verify no sign reversal |
+| NNT/NNH reasonableness | NNT > 1, NNH > 1, clinically meaningful | Check arithmetic, baseline risk |
+| Biological plausibility | Mechanism exists linking intervention to outcome | Discuss in limitations if no mechanism known |
+| Dose-response consistency | Larger dose = larger effect (usually) | Check for non-monotonic relationship explanation |
+| Temporal plausibility | Effect appears within biologically plausible timeframe | Check timepoint appropriateness |
+| Baseline risk compatibility | Control group event rate matches epidemiological data | Check population selection, ascertainment bias |
+| Subgroup coherence | Subgroup effects are consistent with biological reasoning | Check for p-hacking, interaction test |
 
 **Domain-specific plausibility:**
 
-### Quantum mechanics
+### Pharmacological interventions
 
 ```
-- Expectation values of positive operators must be positive
-- Uncertainty relations satisfied: Dx Dp >= hbar/2
-- Wavefunction normalizable (for bound states)
-- Energy eigenvalues bounded below (for stable systems)
-- Transition probabilities sum to <= 1
+- Effect onset matches pharmacokinetics (e.g., antidepressants take 2-4 weeks)
+- Effect size comparable to same drug class (e.g., SSRIs: SMD ~ 0.3 vs placebo)
+- Dose-response present (unless plateau reached)
+- Side effect profile consistent with mechanism
+- Common error: Reporting a huge effect size (SMD > 1.0) from small trials
+  (small-study effect, publication bias likely)
 ```
 
-### Thermodynamics
+### Surgical interventions
 
 ```
-- Heat capacity C_V >= 0 (stability)
-- Compressibility kappa >= 0 (mechanical stability)
-- Free energy F = U - TS must be minimized at equilibrium
-- Phase transitions: Clausius-Clapeyron relation satisfied
-- Third law: S -> 0 (or constant) as T -> 0
+- Surgical skill/volume effects plausible
+- Recovery timeline matches procedure complexity
+- Effect of sham control appropriate (placebo surgery has substantial effects)
+- Common error: Comparing experienced surgeons (intervention) with
+  non-specialist care (control) — confounded by expertise
 ```
 
-### Electrodynamics
+### Diagnostic tests
 
 ```
-- Poynting vector gives correct energy flow direction
-- Radiation pattern has correct multipole structure
-- Far-field falls off as 1/r
-- Near-field has correct singularity structure
-- Optical theorem satisfied (for scattering)
+- Sensitivity and specificity within plausible ranges for the test type
+- Likelihood ratios meaningful (LR+ > 10 or LR- < 0.1 for definitive tests)
+- Prevalence-adjusted PPV/NPV make clinical sense
+- Common error: Reporting sensitivity/specificity from case-control studies
+  with extreme populations (spectrum bias inflates accuracy)
 ```
 
-### Particle physics
+### Screening interventions
 
 ```
-- Cross sections positive and finite (after renormalization)
-- Decay rates Gamma >= 0
-- Branching ratios sum to 1
-- Mandelstam variables satisfy s + t + u = sum(m^2)
-- Froissart bound respected at high energy
+- Lead-time bias accounted for (earlier detection != longer survival)
+- Length-time bias accounted for (slow-growing detected more often)
+- Overdiagnosis quantified (detecting disease that would never cause harm)
+- Common error: Reporting improved 5-year survival as evidence of
+  screening benefit without addressing these biases
+```
+
+**Order-of-magnitude benchmarks for medical research:**
+
+```
+Pharmacological effect sizes (vs placebo):
+  - Small: SMD 0.2 (e.g., SSRIs for mild depression)
+  - Medium: SMD 0.5 (e.g., statins for LDL reduction)
+  - Large: SMD 0.8 (e.g., insulin for diabetic ketoacidosis)
+  - Implausibly large: SMD > 1.5 in a placebo-controlled trial
+    (suspect small-study bias or flawed methodology)
+
+Risk reductions:
+  - Aspirin for secondary CVD prevention: RR ~ 0.80
+  - Statins for major vascular events: RR ~ 0.75
+  - ACE inhibitors for heart failure mortality: RR ~ 0.77
+  - Antibiotics for sepsis: RR varies widely by pathogen
+
+NNT ranges:
+  - Excellent: NNT 2-5 (e.g., antibiotics for bacterial meningitis)
+  - Good: NNT 5-20 (e.g., statins for high-risk CVD prevention)
+  - Moderate: NNT 20-100 (e.g., aspirin for primary prevention)
+  - Marginal: NNT > 100 (e.g., screening for rare conditions)
+
+  Red flag: NNT < 2 from a trial (implies almost all patients benefit,
+  which is rare outside acute infectious disease treatment).
 ```
 
 **When to apply:**
 
-- After every calculation before reporting results
-- When results are surprising or unexpected
-- When working in unfamiliar regimes
-- As a final sanity check before publication
+- After every meta-analysis (does the pooled estimate make clinical sense?)
+- When effect sizes are unusually large or unusually small
+- When results contradict clinical experience or biological mechanisms
+- When presenting results to clinical decision-makers
 
-</physical_plausibility>
+</clinical_plausibility>
 
 <in_execution_validation>
 
 ## In-Execution Validation Patterns
 
-Validate intermediate results during plan execution -- catching errors as they happen rather than after all tasks are complete.
+Validate intermediate results during the evidence synthesis process — catching errors as they happen rather than after all analyses are complete.
 
-**Core Principle: Validate as you go, not after the fact.** Every task that produces a result should validate that result before the next task consumes it. Errors propagate and compound -- a sign error in task 1 becomes an unrecoverable mess by task 5.
+**Core Principle: Validate as you go, not after the fact.** Every step that produces a result should validate that result before the next step consumes it. Data extraction errors propagate and compound — a sign error in one study's effect size contaminates the entire meta-analysis.
 
 ### Validation Hierarchy
 
 Apply in order of diagnostic power (cheapest and most informative first):
 
-1. **Dimensional Analysis (Every Result):** Before moving to the next task, verify dimensions of all new expressions.
-2. **Special Values (When Available):** Test expressions at known points before using them in subsequent calculations.
-3. **Symmetry Checks (Before Building on Result):** Verify the result has the symmetries it must have before proceeding.
-4. **Numerical Sanity (For Computational Tasks):** After generating numerical results, check before saving.
+1. **Data Extraction Check (Every Study):** Before moving to synthesis, verify extracted data against the source paper.
+2. **Effect Size Calculation Check (When Calculated):** Verify the conversion formula and input values before including in meta-analysis.
+3. **PICO Consistency Check (Before Pooling):** Verify clinical homogeneity before running any meta-analysis.
+4. **Statistical Sanity Check (After Every Analysis):** After generating results, check for implausible values before interpreting.
 
 ### When to Validate
 
-| After This                       | Validate This                              | How                               |
-| -------------------------------- | ------------------------------------------ | --------------------------------- |
-| Deriving an equation             | Dimensions of every new expression         | Count [M], [L], [T] powers        |
-| Computing an integral            | Special values, limiting cases             | Substitute known parameter values |
-| Writing numerical code           | Test on trivially solvable case            | Compare to analytical result      |
-| Solving an eigenvalue problem    | Spectrum properties (real, bounded, trace) | Numerical checks                  |
-| Computing a correlation function | Symmetry properties, asymptotics           | Check specific limits             |
-| Performing a Fourier transform   | Parseval's theorem, reality conditions     | Numerical cross-check             |
+| After This | Validate This | How |
+|---|---|---|
+| Extracting data from a study | Effect size, sample size, variance | Double-extract, check against tables/figures |
+| Calculating an effect size | Direction, magnitude, SE | Recalculate from 2x2 table or means/SDs |
+| Running a meta-analysis | Forest plot, heterogeneity, pooled estimate | Visual inspection + statistical checks |
+| Running a sensitivity analysis | Consistency with main analysis | Compare direction, magnitude, significance |
+| Generating a funnel plot | Symmetry, outliers | Visual + Egger's test |
+| Performing subgroup analysis | Interaction test, within-subgroup estimates | Formal interaction p-value, not just comparing subgroup p-values |
 
 ### Validation Failure Protocol
 
 When a validation check fails during execution:
 
-1. **Stop the current task.** Do not proceed to the next task.
+1. **Stop the current analysis.** Do not proceed to interpretation.
 2. **Record the failure** in the SUMMARY with details (expected, obtained, magnitude of discrepancy).
-3. **Attempt to diagnose** using the deviation rules (Rule 4: add missing steps).
+3. **Attempt to diagnose** using the data extraction: re-check source paper, recalculate effect size.
 4. **If fixable within scope:** Fix, re-validate, continue.
-5. **If not fixable:** Complete the current task with the failure noted, flag in SUMMARY as blocking.
+5. **If not fixable:** Complete the current step with the failure noted, flag in SUMMARY as blocking.
 
 </in_execution_validation>
 
-## Analytical Derivation Checklist
+## Systematic Review Verification Checklist
 
-- [ ] Dimensional analysis: all terms match
-- [ ] Limiting cases: reduces to known results in appropriate limits
-- [ ] Symmetries: result respects all symmetries of the theory
-- [ ] Conservation laws: derived expression conserves expected quantities
-- [ ] Sign conventions: consistent throughout (metric signature, Fourier transform convention, etc.)
-- [ ] Index structure: all tensor indices properly contracted
-- [ ] Boundary conditions: satisfied by the solution
-- [ ] Order-of-magnitude: result is the expected scale
+- [ ] PICO consistency: all included studies address the same question
+- [ ] Search completeness: multiple databases, grey literature, no language restriction
+- [ ] PRISMA flow diagram: numbers add up at each stage
+- [ ] Data extraction: double-extracted, discrepancies resolved
+- [ ] Risk of bias: assessed with appropriate tool for all studies
+- [ ] Effect measure: appropriate for outcome type and pooling method
+- [ ] Statistical model: appropriate for expected heterogeneity
+- [ ] Heterogeneity: quantified and explored (I-squared, tau-squared, prediction interval)
+- [ ] Sensitivity analyses: pre-specified and conducted
+- [ ] Publication bias: assessed (if >= 10 studies)
+- [ ] GRADE: certainty rated for each outcome
 
 ## Paper-Ready Result Checklist
 
 - [ ] All applicable checks passed (see domain-specific files)
-- [ ] Significant figures: reported precision matches actual uncertainty
-- [ ] Error bars: statistical and systematic separated
-- [ ] Chi-squared / goodness of fit: reported for all fits
-- [ ] Literature comparison: agreement or explained disagreement with prior work
-- [ ] Units stated: every dimensional quantity has explicit units
-- [ ] Conventions stated: metric signature, normalization, etc.
-- [ ] Code/data available: results are reproducible by others
+- [ ] Confidence intervals: reported for all estimates
+- [ ] Heterogeneity: I-squared, tau-squared, prediction interval reported
+- [ ] NNT/NNH: calculated for clinically meaningful threshold
+- [ ] GRADE certainty: stated for each outcome
+- [ ] Summary of findings table: complete per Cochrane standards
+- [ ] Forest plot: generated, labeled, readable
+- [ ] Funnel plot: generated if >= 10 studies
+- [ ] Protocol registration: CRD/PROSPERO number stated
+- [ ] Deviations from protocol: documented and justified
+- [ ] Code/data available: analysis scripts and extracted data shared
 
 ## When to Require Human Verification
 
-Some physics checks can't be fully automated. Flag these for human review:
+Some medical research checks cannot be fully automated. Flag these for human review:
 
 **Always human:**
 
-- Physical interpretation of results (does the physics make sense?)
-- Choice of approximation scheme (is the method appropriate?)
-- Assessment of systematic errors (what have we neglected?)
-- Novel results that disagree with literature (error or discovery?)
-- Sign of interference terms (constructive vs destructive)
-- Topological considerations (winding numbers, Berry phases)
-- Renormalization scheme dependence of intermediate quantities
+- Clinical interpretation of results (is the effect clinically meaningful, not just statistically significant?)
+- Appropriateness of the research question (does this address a real clinical need?)
+- Assessment of indirectness (are the included studies relevant to the target population?)
+- Novel results that contradict current guidelines (error or new evidence?)
+- Ethical considerations (should this change practice? Is equipoise maintained?)
+- Patient-important outcome selection (are we measuring what matters to patients?)
+- Guideline panel recommendations based on the evidence
 
 **Human if uncertain:**
 
-- Whether a divergence is physical or an artifact
-- Whether symmetry breaking is spontaneous or due to a bug
-- Phase transition order (requires careful finite-size scaling analysis)
-- Whether numerical noise is masking a real signal
-- Interpretation of degenerate solutions
+- Whether heterogeneity reflects true clinical differences or methodological noise
+- Whether a large effect in observational studies reflects confounding or a true signal
+- Whether surrogate outcomes are valid proxies for patient-important outcomes
+- Whether to downgrade GRADE for indirectness (judgment call on relevance)
+- Interpretation of conflicting subgroup analyses
 
 ## Adversarial Verification (Red Team Check)
 
-For results with HIGH physics impact, spawn a lightweight "red team" check:
-- Goal: Find an error in this result
-- Try: wrong limiting case, dimensional inconsistency, sign error, missing factor
-- Try: convention mismatch, boundary condition error, approximation breakdown
-- Try: construct a counterexample where the result gives unphysical predictions
+For results with HIGH clinical impact (would change guidelines or prescribing), spawn a lightweight "red team" check:
+- Goal: Find an error in this synthesis
+- Try: data extraction error, wrong effect direction, PICO inconsistency, wrong statistical model
+- Try: missing studies, publication bias, selective outcome reporting, p-hacking
+- Try: construct a scenario where the recommendation based on this evidence causes harm
 - Report: Either a specific error found, or "no error found after N checks"
 
-## Cancellation Detection
+## Common LLM Error Patterns in Medical Research (Top 5)
 
-When a computed result is anomalously small compared to individual contributing terms, this signals either a symmetry-enforced cancellation or a sign error.
-
-**Protocol:**
-
-1. **Compute the cancellation ratio:** R = |final_result| / max(|individual_terms|)
-2. **If R < 1e-4, this is likely a symmetry-enforced cancellation.** Investigate before trusting the result.
-3. **Identify the enforcing mechanism:**
-   - Ward identity (gauge symmetry)
-   - Conservation law (Noether symmetry)
-   - Selection rule (discrete symmetry)
-   - Supersymmetric cancellation (boson-fermion)
-   - Topological protection
-4. **If no symmetry explanation exists, suspect a sign error in one of the canceling terms.**
-5. **Verify by perturbing:** Break the expected symmetry slightly and check that the result becomes O(perturbation). If it doesn't, the cancellation is accidental and likely wrong.
-
-**Quantitative thresholds:**
-
-| Cancellation Ratio R | Interpretation | Action |
-|---|---|---|
-| R > 0.1 | Normal; no special concern | Standard verification |
-| 1e-4 < R < 0.1 | Moderate cancellation | Identify mechanism; verify analytically |
-| R < 1e-4 | Extreme cancellation | Must identify symmetry or suspect error |
-| R < 1e-10 | Almost certainly symmetry-protected | Ward identity or exact cancellation required |
+1. **Data extraction errors** (wrong column, wrong timepoint, wrong group): Caught by double-extraction and recalculation from 2x2 tables
+2. **Effect direction errors** (benefit reported as harm or vice versa): Caught by biological plausibility check and visual inspection of forest plot
+3. **Effect measure confusion** (OR interpreted as RR, MD used when SMD needed): Caught by PICO consistency check and scale verification
+4. **Heterogeneity ignored** (pooling studies with I-squared > 75% without investigation): Caught by heterogeneity assessment and prediction interval
+5. **Missing GRADE domains** (incomplete certainty assessment): Caught by automated GRADE completeness check
 
 ## See Also
 
-- `references/verification/core/verification-quick-reference.md` -- Compact checklist (default entry point)
-- `references/verification/core/verification-numerical.md` -- Convergence testing, statistical validation, numerical stability
-- `../domains/verification-domain-qft.md` -- QFT, particle physics, GR, mathematical physics
-- `../domains/verification-domain-condmat.md` -- Condensed matter, quantum information, AMO
-- `../domains/verification-domain-statmech.md` -- Statistical mechanics, cosmology, fluids
-- `../errors/llm-physics-errors.md` -- Catalog of 104 LLM-specific error classes with detection strategies
+- `references/verification/core/verification-quick-reference.md` — Compact checklist (default entry point)
+- `references/verification/core/verification-numerical.md` — Statistical verification, convergence testing, automated verification
+- `references/verification/core/verification-patterns.md` — Verification pattern index
+- `references/verification/core/computational-verification-templates.md` — R/Python code templates
+- `references/verification/core/code-testing-medical.md` — Testing patterns for medical research code

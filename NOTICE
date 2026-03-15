@@ -1,0 +1,19 @@
+Get Medicine Done (GMD)
+Copyright 2026 Balneario de Cofrentes
+
+This product is a derivative work of Get Physics Done (GPD),
+originally developed by Physical Superintelligence PBC (PSI).
+
+Original work: https://github.com/psi-oss/get-physics-done
+Copyright 2026 Physical Superintelligence PBC
+
+Licensed under the Apache License, Version 2.0.
+
+Changes from the original work:
+- Domain adaptation from physics research to medical/clinical research
+- Replaced physics subfields, protocols, and verification domains with
+  medical equivalents (PRISMA, CONSORT, GRADE, RoB 2, etc.)
+- Renamed GPD → GMD, gpd → gmd throughout
+- Added medical-specific content: balneology, epidemiology, clinical trials,
+  systematic review methodology, meta-analysis verification
+- Adapted agent roles for medical research workflows

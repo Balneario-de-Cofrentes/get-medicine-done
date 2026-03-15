@@ -22,3 +22,11 @@ keywords:
   - "codex"
   - "gemini"
   - "opencode"
+references:
+  - type: software
+    title: "Get Physics Done (GPD)"
+    authors:
+      - name: "Physical Superintelligence PBC"
+    repository-code: "https://github.com/psi-oss/get-physics-done"
+    license: Apache-2.0
+    notes: "Get Medicine Done is a derivative work of GPD, adapted from physics to medical research."

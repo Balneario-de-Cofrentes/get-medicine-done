@@ -1,446 +1,566 @@
 ---
 load_when:
-  - "numerical convergence"
-  - "statistical validation"
-  - "Monte Carlo error"
-  - "numerical stability"
-  - "cross-check literature"
+  - "statistical verification"
+  - "meta-analysis validation"
+  - "heterogeneity check"
+  - "publication bias"
+  - "power analysis"
   - "automated verification"
 tier: 2
 context_cost: large
 ---
 
-# Verification Numerical — Convergence, Statistics, and Numerical Stability
+# Verification Statistical — Meta-Analysis Statistics, Power, and Automated Validation
 
-Convergence testing, statistical validation, cross-checks with literature, and automated verification framework. Everything needed to validate computational physics results.
+Statistical verification for meta-analyses, power analysis, publication bias detection, heterogeneity assessment, and automated verification framework. Everything needed to validate computational medical research results.
 
-**Load when:** Working with numerical calculations, simulations, Monte Carlo, or any computational physics.
+**Load when:** Working with meta-analyses, statistical calculations, systematic review data synthesis, or any quantitative medical evidence.
 
 **Related files:**
 - `references/verification/core/verification-quick-reference.md` — compact checklist (default entry point)
-- `references/verification/core/verification-core.md` — dimensional analysis, limiting cases, conservation laws
-- `../domains/verification-domain-qft.md` — QFT, particle, GR, mathematical physics
-- `../domains/verification-domain-condmat.md` — condensed matter, quantum information, AMO
-- `../domains/verification-domain-statmech.md` — statistical mechanics, cosmology, fluids
+- `references/verification/core/verification-core.md` — PICO consistency, sensitivity analysis, risk of bias, GRADE
+- `references/verification/core/computational-verification-templates.md` — R/Python code templates
+- `references/verification/core/code-testing-medical.md` — testing patterns for medical research code
 
 ---
 
-<numerical_convergence>
+<meta_analysis_statistics>
 
-## Numerical Convergence Verification
+## Meta-Analysis Statistical Verification
 
-Numerical results must converge as resolution increases. If they don't, the result cannot be trusted.
+Meta-analysis results must be validated at multiple levels: correct data input, appropriate model, correct computation, and meaningful output.
 
-**Principle:** A numerical result is only meaningful if it is stable under refinement of the numerical parameters (grid spacing, basis size, time step, sample count, etc.).
+**Principle:** A meta-analysis result is only trustworthy if the input data is verified, the statistical model is appropriate, and the output is checked against independent computation.
 
-**Convergence hierarchy:**
+**Verification hierarchy:**
 
 ```
-1. Does it run?           -> Code executes without errors
-2. Does it finish?        -> Converges to a fixed point / completes iteration
-3. Does it converge?      -> Result stable as resolution increases
-4. Does it converge fast? -> Rate matches theoretical expectation
-5. Is it accurate?        -> Agrees with known analytical result (if available)
+1. Does it run?              -> Code executes without errors
+2. Does it use correct data? -> Effect sizes and SEs match source papers
+3. Does it use correct model? -> FE vs RE appropriate, effect measure right
+4. Does it compute correctly? -> Cross-check with independent software
+5. Is it robust?             -> Sensitivity analyses confirm main finding
 ```
 
-Levels 1-2 are necessary but NOT sufficient. Level 3 is the minimum for a trustworthy result.
+Levels 1-2 are necessary but NOT sufficient. Level 4 is the minimum for a trustworthy result.
 
-**Standard convergence tests:**
+**Standard statistical verification tests:**
 
-### Grid/mesh refinement
+### Effect size recalculation
 
 ```python
-def verify_grid_convergence(compute_fn, grid_sizes, expected_order=2):
+import numpy as np
+
+def verify_effect_size_from_2x2(events_tx, n_tx, events_ctrl, n_ctrl,
+                                 reported_or, reported_ci, tolerance=0.05):
     """
-    Check that results converge as grid is refined.
+    Recalculate OR from 2x2 table and verify against reported value.
 
     Args:
-        compute_fn: Function(N) -> result for grid size N
-        grid_sizes: List of increasing grid sizes, e.g., [32, 64, 128, 256]
-        expected_order: Expected convergence order (2 for second-order method)
+        events_tx: Number of events in treatment group
+        n_tx: Total in treatment group
+        events_ctrl: Number of events in control group
+        n_ctrl: Total in control group
+        reported_or: OR reported in the paper
+        reported_ci: (lower, upper) CI reported
+        tolerance: Relative tolerance for match
     """
-    results = [compute_fn(N) for N in grid_sizes]
-    errors = [abs(results[i] - results[-1]) for i in range(len(results) - 1)]
+    a, b = events_tx, n_tx - events_tx
+    c, d = events_ctrl, n_ctrl - events_ctrl
+    if any(x == 0 for x in [a, b, c, d]):
+        a, b, c, d = a + 0.5, b + 0.5, c + 0.5, d + 0.5
 
-    # Check convergence rate
-    for i in range(len(errors) - 1):
-        ratio = grid_sizes[i] / grid_sizes[i + 1]
-        error_ratio = errors[i] / errors[i + 1] if errors[i + 1] > 0 else float('inf')
-        observed_order = np.log(error_ratio) / np.log(1 / ratio)
-        assert abs(observed_order - expected_order) < 0.5, (
-            f"Convergence order {observed_order:.1f} != expected {expected_order}"
-        )
-```
+    computed_or = (a * d) / (b * c)
+    log_or = np.log(computed_or)
+    se_log_or = np.sqrt(1/a + 1/b + 1/c + 1/d)
 
-### Basis set convergence (quantum mechanics)
+    ci_lower = np.exp(log_or - 1.96 * se_log_or)
+    ci_upper = np.exp(log_or + 1.96 * se_log_or)
 
-```python
-def verify_basis_convergence(compute_fn, basis_sizes, tolerance=1e-6):
+    or_match = abs(computed_or - reported_or) / reported_or < tolerance
+    ci_match = (abs(ci_lower - reported_ci[0]) / reported_ci[0] < tolerance and
+                abs(ci_upper - reported_ci[1]) / reported_ci[1] < tolerance)
+
+    status = "PASS" if or_match and ci_match else "FAIL"
+    print(f"{status} OR verification:")
+    print(f"  Computed: {computed_or:.3f} [{ci_lower:.3f}, {ci_upper:.3f}]")
+    print(f"  Reported: {reported_or:.3f} [{reported_ci[0]:.3f}, {reported_ci[1]:.3f}]")
+    return or_match and ci_match
+
+
+def verify_smd_from_means(mean_tx, sd_tx, n_tx, mean_ctrl, sd_ctrl, n_ctrl,
+                           reported_smd, tolerance=0.05):
     """
-    Check convergence of eigenvalue as basis size increases.
-
-    Typical: plane waves, harmonic oscillator basis, Gaussian basis sets.
+    Recalculate SMD (Hedges' g) from means and SDs.
     """
-    results = [compute_fn(N) for N in basis_sizes]
-    # Eigenvalues must decrease monotonically (variational principle)
-    for i in range(len(results) - 1):
-        assert results[i + 1] <= results[i] + tolerance, (
-            f"Variational principle violated: E({basis_sizes[i+1]}) > E({basis_sizes[i]})"
-        )
-    # Check convergence
-    final_deltas = [abs(results[i] - results[-1]) for i in range(len(results) - 1)]
-    assert final_deltas[-2] < tolerance, (
-        f"Not converged: delta = {final_deltas[-2]:.2e} > tolerance {tolerance:.2e}"
+    sd_pooled = np.sqrt(
+        ((n_tx - 1) * sd_tx**2 + (n_ctrl - 1) * sd_ctrl**2) /
+        (n_tx + n_ctrl - 2)
     )
+    d = (mean_tx - mean_ctrl) / sd_pooled
+    df = n_tx + n_ctrl - 2
+    j = 1 - 3 / (4 * df - 1)
+    g = d * j
+
+    se_g = np.sqrt(
+        (n_tx + n_ctrl) / (n_tx * n_ctrl) + g**2 / (2 * (n_tx + n_ctrl))
+    ) * j
+
+    match = abs(g - reported_smd) / max(abs(reported_smd), 0.001) < tolerance
+    status = "PASS" if match else "FAIL"
+    print(f"{status} SMD verification:")
+    print(f"  Computed Hedges' g: {g:.4f} (SE: {se_g:.4f})")
+    print(f"  Reported SMD: {reported_smd:.4f}")
+    return match
 ```
 
-### Time step convergence
+### Pooled estimate verification
 
 ```python
-def verify_timestep_convergence(compute_fn, dt_values, expected_order=2):
+def verify_fixed_effect_meta(effect_sizes, variances, reported_pooled,
+                              reported_ci, tolerance=0.05):
     """
-    Check that time integration converges as dt decreases.
+    Verify fixed-effect (inverse-variance) meta-analysis.
     """
-    results = [compute_fn(dt) for dt in dt_values]
-    # Richardson extrapolation for error estimation
-    for i in range(len(results) - 2):
-        ratio = dt_values[i] / dt_values[i + 1]
-        e1 = abs(results[i] - results[i + 1])
-        e2 = abs(results[i + 1] - results[i + 2])
-        if e2 > 0:
-            observed_order = np.log(e1 / e2) / np.log(ratio)
-            assert abs(observed_order - expected_order) < 0.5
-```
+    weights = 1.0 / np.array(variances)
+    pooled = np.sum(weights * np.array(effect_sizes)) / np.sum(weights)
+    se_pooled = np.sqrt(1.0 / np.sum(weights))
+    ci_lower = pooled - 1.96 * se_pooled
+    ci_upper = pooled + 1.96 * se_pooled
 
-### Monte Carlo convergence
+    match = abs(pooled - reported_pooled) / max(abs(reported_pooled), 0.001) < tolerance
+    status = "PASS" if match else "FAIL"
+    print(f"{status} Fixed-effect pooled estimate:")
+    print(f"  Computed: {pooled:.4f} [{ci_lower:.4f}, {ci_upper:.4f}]")
+    print(f"  Reported: {reported_pooled:.4f} [{reported_ci[0]:.4f}, {reported_ci[1]:.4f}]")
+    return match
 
-```python
-def verify_mc_convergence(compute_fn, sample_counts):
+
+def verify_random_effects_dl(effect_sizes, variances, reported_pooled,
+                              reported_ci, tolerance=0.05):
     """
-    Check that Monte Carlo estimator converges as 1/sqrt(N).
+    Verify DerSimonian-Laird random-effects meta-analysis.
     """
-    results = [(compute_fn(N), N) for N in sample_counts]
-    # Statistical error should decrease as 1/sqrt(N)
-    errors = []
-    for (mean, std), N in results:
-        errors.append(std / np.sqrt(N))
-    # Errors should be roughly constant (since we normalized by 1/sqrt(N))
-    relative_variation = np.std(errors) / np.mean(errors)
-    assert relative_variation < 0.5, (
-        f"MC convergence anomalous: relative variation = {relative_variation:.2f}"
-    )
-```
+    es = np.array(effect_sizes)
+    v = np.array(variances)
+    w = 1.0 / v
+    k = len(es)
 
-**Convergence display format:**
+    mu_fe = np.sum(w * es) / np.sum(w)
+    Q = np.sum(w * (es - mu_fe) ** 2)
+    df = k - 1
+    C = np.sum(w) - np.sum(w ** 2) / np.sum(w)
+    tau_sq = max(0, (Q - df) / C)
 
-```
-Grid convergence test:
-  N=32:   E = -7.234891      (ref)
-  N=64:   E = -7.278234      delta = 4.3e-2
-  N=128:  E = -7.289012      delta = 1.1e-2   order = 2.0
-  N=256:  E = -7.291723      delta = 2.7e-3   order = 2.0
-  N=512:  E = -7.292401      delta = 6.8e-4   order = 2.0  PASS
+    w_re = 1.0 / (v + tau_sq)
+    pooled = np.sum(w_re * es) / np.sum(w_re)
+    se_pooled = np.sqrt(1.0 / np.sum(w_re))
+    ci_lower = pooled - 1.96 * se_pooled
+    ci_upper = pooled + 1.96 * se_pooled
+
+    match = abs(pooled - reported_pooled) / max(abs(reported_pooled), 0.001) < tolerance
+    status = "PASS" if match else "FAIL"
+    print(f"{status} DL random-effects pooled estimate:")
+    print(f"  Computed: {pooled:.4f} [{ci_lower:.4f}, {ci_upper:.4f}]")
+    print(f"  tau-squared: {tau_sq:.4f}")
+    print(f"  Reported: {reported_pooled:.4f} [{reported_ci[0]:.4f}, {reported_ci[1]:.4f}]")
+    return match
 ```
 
 **When to apply:**
 
-- Every numerical result that will be reported or used downstream
-- When changing numerical methods or parameters
-- When results disagree with expectations
-- Before any quantitative claim in a paper
+- Every meta-analysis (verify pooled estimate with independent calculation)
+- Every data extraction (recalculate effect size from raw data)
+- When results disagree with prior meta-analyses on the same topic
+- Before any quantitative claim in a systematic review
 
-</numerical_convergence>
+</meta_analysis_statistics>
+
+<heterogeneity_verification>
+
+## Heterogeneity Verification
+
+Heterogeneity statistics must be computed correctly and interpreted appropriately.
+
+**Principle:** Heterogeneity assessment is more than reporting I-squared. A thorough assessment includes Q, I-squared, tau-squared, prediction intervals, and investigation of sources.
+
+**Comprehensive heterogeneity check:**
+
+```python
+from scipy.stats import chi2, t as t_dist
+
+def comprehensive_heterogeneity_check(effect_sizes, variances):
+    """
+    Full heterogeneity assessment with all relevant statistics.
+    """
+    es = np.array(effect_sizes)
+    v = np.array(variances)
+    k = len(es)
+    w = 1.0 / v
+
+    mu = np.sum(w * es) / np.sum(w)
+    Q = np.sum(w * (es - mu) ** 2)
+    df = k - 1
+    p_Q = 1 - chi2.cdf(Q, df)
+
+    I_sq = max(0, (Q - df) / Q * 100) if Q > df else 0
+    H_sq = Q / df if df > 0 else 1.0
+
+    C = np.sum(w) - np.sum(w ** 2) / np.sum(w)
+    tau_sq_dl = max(0, (Q - df) / C)
+
+    # Tau-squared (REML) - iterative
+    tau_sq = tau_sq_dl
+    for _ in range(100):
+        w_re = 1.0 / (v + tau_sq)
+        mu_re = np.sum(w_re * es) / np.sum(w_re)
+        Q_re = np.sum(w_re * (es - mu_re) ** 2)
+        denom = np.sum(w_re ** 2) - np.sum(w_re ** 2) * np.sum(w_re ** 2) / np.sum(w_re) ** 2
+        if denom == 0:
+            break
+        tau_sq_new = max(0, tau_sq + (Q_re - df) / (np.sum(w_re) - np.sum(w_re ** 2) / np.sum(w_re)))
+        if abs(tau_sq_new - tau_sq) < 1e-10:
+            tau_sq = tau_sq_new
+            break
+        tau_sq = tau_sq_new
+
+    # Prediction interval
+    w_re = 1.0 / (v + tau_sq)
+    mu_re = np.sum(w_re * es) / np.sum(w_re)
+    se_re = np.sqrt(1.0 / np.sum(w_re))
+    t_crit = t_dist.ppf(0.975, df=max(k - 2, 1))
+    pi_lower = mu_re - t_crit * np.sqrt(tau_sq + se_re ** 2)
+    pi_upper = mu_re + t_crit * np.sqrt(tau_sq + se_re ** 2)
+
+    print(f"Heterogeneity Assessment (k = {k} studies)")
+    print(f"{'='*50}")
+    print(f"  Cochran's Q = {Q:.2f}, df = {df}, p = {p_Q:.4f}")
+    print(f"  I-squared = {I_sq:.1f}%")
+    print(f"  H-squared = {H_sq:.2f}")
+    print(f"  tau-squared (DL) = {tau_sq_dl:.4f}")
+    print(f"  tau-squared (REML) = {tau_sq:.4f}")
+    print(f"  tau = {np.sqrt(tau_sq):.4f}")
+    print(f"  Pooled estimate = {mu_re:.4f}")
+    print(f"  95% CI: [{mu_re - 1.96*se_re:.4f}, {mu_re + 1.96*se_re:.4f}]")
+    print(f"  95% PI: [{pi_lower:.4f}, {pi_upper:.4f}]")
+
+    issues = []
+    if I_sq > 75:
+        issues.append("WARN: Considerable heterogeneity (I-squared > 75%). "
+                       "Investigate sources before interpreting pooled estimate.")
+    if k < 5:
+        issues.append("WARN: Few studies (k < 5). Heterogeneity estimates are "
+                       "imprecise. Consider HKSJ adjustment.")
+    if pi_lower * pi_upper < 0:
+        issues.append("WARN: Prediction interval crosses null. Effect in a "
+                       "new study could go either way.")
+    if p_Q < 0.10 and I_sq > 50:
+        issues.append("NOTE: Significant Q test suggests true heterogeneity. "
+                       "Explore via subgroup or meta-regression.")
+    if I_sq == 0 and k < 10:
+        issues.append("NOTE: I-squared = 0 does not prove homogeneity with "
+                       "few studies. Q test has low power.")
+
+    for issue in issues:
+        print(f"  {issue}")
+
+    return {
+        "Q": Q, "df": df, "p_Q": p_Q,
+        "I_squared": I_sq, "H_squared": H_sq,
+        "tau_squared_dl": tau_sq_dl, "tau_squared_reml": tau_sq,
+        "prediction_interval": (pi_lower, pi_upper),
+        "issues": issues
+    }
+```
+
+**When to apply:**
+
+- Every meta-analysis (non-negotiable)
+- Before deciding on fixed-effect vs random-effects
+- Before interpreting the pooled estimate
+- When planning subgroup or meta-regression analyses
+
+</heterogeneity_verification>
+
+<publication_bias_verification>
+
+## Publication Bias Assessment
+
+Publication bias threatens the validity of every meta-analysis. Assess systematically.
+
+**Principle:** If studies with statistically significant results are more likely to be published, the meta-analytic estimate will be biased. Multiple methods should be used, as no single test is definitive.
+
+**Publication bias assessment battery:**
+
+```python
+import numpy as np
+from scipy.stats import norm, linregress
+
+def eggers_test(effect_sizes, standard_errors):
+    """
+    Egger's regression test for funnel plot asymmetry.
+    Tests whether smaller studies systematically show larger effects.
+    H0: No small-study effect (intercept = 0).
+    """
+    precision = 1.0 / np.array(standard_errors)
+    z_scores = np.array(effect_sizes) / np.array(standard_errors)
+
+    slope, intercept, r, p_value, se_slope = linregress(precision, z_scores)
+
+    status = "PASS" if p_value > 0.10 else "WARN"
+    print(f"{status} Egger's test: intercept = {intercept:.3f}, p = {p_value:.4f}")
+    if p_value < 0.10:
+        print("  Small-study effect detected. Consider trim-and-fill or selection models.")
+    return {"intercept": intercept, "p_value": p_value, "significant": p_value < 0.10}
+
+
+def peters_test(events_tx, n_tx, events_ctrl, n_ctrl, log_ors, se_log_ors):
+    """
+    Peters' test -- alternative to Egger's for binary outcomes.
+    Regresses 1/N on standardized effect. Less biased than Egger's for ORs.
+    """
+    n_total = np.array(n_tx) + np.array(n_ctrl)
+    inv_n = 1.0 / n_total
+    z_scores = np.array(log_ors) / np.array(se_log_ors)
+
+    slope, intercept, r, p_value, se_slope = linregress(inv_n, z_scores)
+
+    status = "PASS" if p_value > 0.10 else "WARN"
+    print(f"{status} Peters' test: intercept = {intercept:.3f}, p = {p_value:.4f}")
+    return {"intercept": intercept, "p_value": p_value}
+
+
+def trim_and_fill(effect_sizes, variances, side="left"):
+    """
+    Duval & Tweedie trim-and-fill for estimating adjusted pooled effect.
+    Identifies asymmetry in the funnel plot and imputes missing studies.
+    """
+    es = np.array(effect_sizes)
+    v = np.array(variances)
+    k = len(es)
+
+    w = 1.0 / v
+    mu = np.sum(w * es) / np.sum(w)
+
+    n_missing = 0
+    for i in range(k):
+        mirror = 2 * mu - es[i]
+        has_mirror = np.any(np.abs(es - mirror) < 0.1 * np.std(es))
+        if not has_mirror and ((side == "left" and es[i] > mu) or
+                                (side == "right" and es[i] < mu)):
+            n_missing += 1
+
+    imputed_es = list(es)
+    imputed_v = list(v)
+    for i in range(n_missing):
+        if side == "left":
+            idx = np.argmax(es - mu)
+        else:
+            idx = np.argmin(es - mu)
+        mirror_es = 2 * mu - es[idx]
+        imputed_es.append(mirror_es)
+        imputed_v.append(v[idx])
+
+    w_adj = 1.0 / np.array(imputed_v)
+    mu_adj = np.sum(w_adj * np.array(imputed_es)) / np.sum(w_adj)
+
+    print(f"Trim-and-fill: {n_missing} studies imputed")
+    print(f"  Original pooled: {mu:.4f}")
+    print(f"  Adjusted pooled: {mu_adj:.4f}")
+    print(f"  Change: {abs(mu_adj - mu):.4f}")
+
+    return {
+        "n_imputed": n_missing,
+        "original_pooled": mu,
+        "adjusted_pooled": mu_adj,
+    }
+```
+
+**Interpretation guidelines:**
+
+| Test | Result | Interpretation |
+|------|--------|---------------|
+| Funnel plot | Symmetric | No visual evidence of publication bias |
+| Funnel plot | Asymmetric (gap bottom-left for positive effects) | Small negative studies may be missing |
+| Egger's test | p > 0.10 | No statistical evidence of small-study effects |
+| Egger's test | p < 0.10 | Small-study effects present (not necessarily publication bias) |
+| Trim-and-fill | 0 studies imputed | No adjustment needed |
+| Trim-and-fill | Studies imputed, estimate changes substantially | Publication bias may inflate the effect |
+| P-curve | Right-skewed | Evidential value present (true effect likely) |
+| P-curve | Flat or left-skewed | P-hacking suspected or no true effect |
+
+**When to apply:**
+
+- Every meta-analysis with >= 10 studies (fewer = low power for all tests)
+- When small studies show systematically larger effects
+- When results seem "too good to be true"
+- When industry-funded studies dominate
+
+</publication_bias_verification>
+
+<power_analysis_verification>
+
+## Power and Precision Verification
+
+Before concluding "no effect" or "confirmed effect", verify that the meta-analysis had adequate power to detect a clinically meaningful difference.
+
+**Principle:** A non-significant result from an underpowered meta-analysis is not evidence of no effect. Optimal Information Size (OIS) provides the sample size threshold.
+
+**Power analysis for meta-analysis:**
+
+```python
+from scipy.stats import norm
+
+def optimal_information_size_binary(p_ctrl, rr_target, alpha=0.05, power=0.80):
+    """
+    Calculate Optimal Information Size for binary outcome.
+
+    OIS = sample size a single well-powered trial would need.
+    The meta-analysis total N should exceed OIS.
+
+    Args:
+        p_ctrl: Expected event rate in control group
+        rr_target: Minimum clinically important RR to detect
+        alpha: Significance level
+        power: Desired power
+    """
+    p_tx = p_ctrl * rr_target
+    z_alpha = norm.ppf(1 - alpha / 2)
+    z_beta = norm.ppf(power)
+
+    n_per_arm = ((z_alpha * np.sqrt(2 * p_ctrl * (1 - p_ctrl)) +
+                   z_beta * np.sqrt(p_ctrl * (1 - p_ctrl) + p_tx * (1 - p_tx))) /
+                  (p_ctrl - p_tx)) ** 2
+
+    ois = int(np.ceil(2 * n_per_arm))
+    print(f"OIS for binary outcome:")
+    print(f"  Control event rate: {p_ctrl:.3f}")
+    print(f"  Target RR: {rr_target:.2f} (treatment rate: {p_tx:.3f})")
+    print(f"  OIS: {ois} total participants")
+    return ois
+
+
+def optimal_information_size_continuous(smd_target, alpha=0.05, power=0.80):
+    """
+    Calculate OIS for continuous outcome.
+
+    Args:
+        smd_target: Minimum clinically important SMD
+    """
+    z_alpha = norm.ppf(1 - alpha / 2)
+    z_beta = norm.ppf(power)
+    n_per_arm = int(np.ceil(((z_alpha + z_beta) / smd_target) ** 2))
+    ois = 2 * n_per_arm
+
+    print(f"OIS for continuous outcome:")
+    print(f"  Target SMD: {smd_target:.2f}")
+    print(f"  OIS: {ois} total participants")
+    return ois
+
+
+def verify_precision_adequacy(total_n, ois, ci_lower, ci_upper,
+                               clinical_threshold):
+    """
+    Check whether meta-analysis has adequate precision.
+    """
+    issues = []
+
+    if total_n < ois:
+        issues.append(
+            f"Total N ({total_n}) < OIS ({ois}). "
+            "Meta-analysis may be underpowered. "
+            "Downgrade GRADE for imprecision."
+        )
+
+    if ci_lower < clinical_threshold < ci_upper:
+        issues.append(
+            f"CI [{ci_lower:.3f}, {ci_upper:.3f}] crosses clinical "
+            f"decision threshold ({clinical_threshold}). "
+            "Downgrade GRADE for imprecision."
+        )
+
+    if total_n >= ois and not (ci_lower < clinical_threshold < ci_upper):
+        print("PASS: Adequate precision (OIS met, CI does not cross threshold)")
+    else:
+        for issue in issues:
+            print(f"WARN: {issue}")
+
+    return {"adequate": len(issues) == 0, "issues": issues}
+```
+
+**When to apply:**
+
+- Before concluding "no effect" (absence of evidence != evidence of absence)
+- Before GRADE assessment of imprecision
+- When planning a new trial to fill evidence gaps
+- When the CI is wide relative to the clinical decision threshold
+
+</power_analysis_verification>
 
 <cross_check_literature>
 
 ## Cross-Check with Known Results
 
-Compare your results against published values, analytical solutions, and independent calculations.
+Compare your meta-analysis results against published systematic reviews, clinical guidelines, and established evidence.
 
-**Principle:** Physics results exist in a web of interconnected knowledge. A new result should be consistent with established results in overlapping regimes.
+**Principle:** Medical evidence exists in a web of interconnected knowledge. A new synthesis should be consistent with established evidence or the disagreement must be explained.
 
 **Cross-check hierarchy:**
 
-| Priority | Check Against                             | Confidence if Agrees              |
-| -------- | ----------------------------------------- | --------------------------------- |
-| 1        | Exact analytical solution (if known)      | Very high                         |
-| 2        | Published numerical benchmark             | High                              |
-| 3        | Independent code/method (same problem)    | High                              |
-| 4        | Textbook limiting case                    | Medium-high                       |
-| 5        | Order-of-magnitude estimate               | Medium                            |
-| 6        | Physical intuition / qualitative behavior | Low (but violation is a red flag) |
+| Priority | Check Against | Confidence if Agrees |
+|----------|---------------|---------------------|
+| 1 | Cochrane review on same topic | Very high |
+| 2 | Published meta-analysis in major journal | High |
+| 3 | Clinical practice guideline recommendation | High |
+| 4 | Individual large RCT (>1000 participants) | Medium-high |
+| 5 | Observational study estimates | Medium |
+| 6 | Biological plausibility / mechanism | Low (but violation is a red flag) |
 
-**Protocol for cross-checking:**
+**Standard references by evidence type:**
 
-```python
-def cross_check_with_literature(our_result, literature_value, literature_uncertainty,
-                                 our_uncertainty=None, source=""):
-    """
-    Compare result with published value.
-    """
-    discrepancy = abs(our_result - literature_value)
-    combined_sigma = np.sqrt(literature_uncertainty**2 + (our_uncertainty or 0)**2)
-
-    if combined_sigma > 0:
-        tension = discrepancy / combined_sigma
-        status = "PASS" if tension < 3 else ("WARN" if tension < 5 else "FAIL")
-        print(f"{status} vs {source}: {tension:.1f}sigma "
-              f"(ours: {our_result}, lit: {literature_value} +/- {literature_uncertainty})")
-    else:
-        relative_diff = discrepancy / abs(literature_value) if literature_value != 0 else float('inf')
-        status = "PASS" if relative_diff < 0.01 else ("WARN" if relative_diff < 0.1 else "FAIL")
-        print(f"{status} vs {source}: {relative_diff:.1e} relative difference")
-```
-
-**Standard references by domain:**
-
-| Domain                | Key References                                |
-| --------------------- | --------------------------------------------- |
-| Particle physics      | PDG (Particle Data Group) Review              |
-| Atomic physics        | NIST Atomic Spectra Database                  |
-| Condensed matter      | Materials Project, AFLOW databases            |
-| Quantum chemistry     | NIST CCCBDB, ATcT thermochemistry             |
-| Cosmology             | Planck collaboration results                  |
-| Nuclear physics       | NNDC (National Nuclear Data Center)           |
-| Statistical mechanics | Exactly solved models (Onsager, Bethe ansatz) |
+| Domain | Key References |
+|--------|---------------|
+| Drug efficacy | Cochrane Library, NICE guidelines, FDA labels |
+| Diagnostic accuracy | Cochrane DTA reviews, STARD-reported studies |
+| Surgical procedures | Cochrane, GRADE guidelines, specialty society guidelines |
+| Public health | WHO guidelines, CDC recommendations, USPSTF |
+| Drug safety | FDA Adverse Event Reporting System, EMA safety reports |
+| Epidemiology | GBD study, WHO disease burden estimates |
 
 **When to apply:**
 
-- Before reporting any numerical value
-- When a result will be compared with experiment
-- When extending a known calculation to new parameter regimes
-- When using a new method on a known problem (method validation)
+- Before reporting any pooled estimate
+- When a result will inform clinical guidelines
+- When your result disagrees with an existing Cochrane review
+- When using a new method on a previously reviewed question
 
 </cross_check_literature>
 
-<statistical_validation>
+## Meta-Analysis Verification Checklist
 
-## Statistical Validation
+- [ ] Data extraction: all effect sizes recalculated from raw data (2x2 tables, means/SDs)
+- [ ] Effect measure: appropriate for outcome type and consistent across studies
+- [ ] Statistical model: FE vs RE justified, tau-squared estimator stated
+- [ ] Heterogeneity: Q, I-squared, tau-squared, prediction interval all reported
+- [ ] Sensitivity: leave-one-out, model comparison, RoB-restricted analyses done
+- [ ] Publication bias: funnel plot + Egger's test (if k >= 10)
+- [ ] Power: OIS calculated, precision adequate for conclusion
+- [ ] Cross-check: compared with existing reviews / guidelines
+- [ ] GRADE: certainty assessed with imprecision domain informed by OIS
+- [ ] Forest plot: generated, correctly labeled, effect direction consistent
+- [ ] Subgroups: interaction test used (not just comparing subgroup p-values)
+- [ ] Code: analysis script available and reproducible
 
-For results involving stochastic sampling, Monte Carlo, or comparison with experimental data, statistical rigor is essential.
+## Systematic Review Reporting Checklist
 
-**Principle:** A numerical result without a proper error bar is not a result. Statistical validation ensures that quoted uncertainties are honest and that conclusions are warranted by the data.
-
-### Error estimation methods
-
-**Bootstrap resampling:**
-
-```python
-def bootstrap_error(data, statistic_fn, n_bootstrap=10000):
-    """
-    Estimate error of a statistic using bootstrap resampling.
-
-    Returns:
-        (estimate, std_error, confidence_interval)
-    """
-    n = len(data)
-    bootstrap_stats = np.array([
-        statistic_fn(np.random.choice(data, size=n, replace=True))
-        for _ in range(n_bootstrap)
-    ])
-    estimate = statistic_fn(data)
-    std_error = np.std(bootstrap_stats)
-    ci_low = np.percentile(bootstrap_stats, 2.5)
-    ci_high = np.percentile(bootstrap_stats, 97.5)
-    return estimate, std_error, (ci_low, ci_high)
-```
-
-**When:** Non-linear functions of data, derived quantities, ratios, correlation functions.
-
-**Jackknife resampling:**
-
-```python
-def jackknife_error(data, statistic_fn):
-    """
-    Estimate error using jackknife (leave-one-out) resampling.
-    Better for correlated data than naive standard error.
-    """
-    n = len(data)
-    full_stat = statistic_fn(data)
-    jackknife_stats = np.array([
-        statistic_fn(np.delete(data, i))
-        for i in range(n)
-    ])
-    bias = (n - 1) * (np.mean(jackknife_stats) - full_stat)
-    variance = ((n - 1) / n) * np.sum((jackknife_stats - np.mean(jackknife_stats))**2)
-    return full_stat - bias, np.sqrt(variance)
-```
-
-**When:** Bias estimation important, small samples, or when bootstrap is too expensive.
-
-**Binning analysis (for correlated time series):**
-
-```python
-def binning_analysis(time_series, max_bin_level=20):
-    """
-    Determine statistical error accounting for autocorrelation.
-    Error estimate plateaus at the correct value when bin size exceeds
-    autocorrelation time.
-    """
-    errors = []
-    data = np.array(time_series)
-    for level in range(max_bin_level):
-        n = len(data)
-        error = np.std(data) / np.sqrt(n - 1)
-        errors.append((2**level, error))
-        # Bin pairs
-        if n % 2 == 1:
-            data = data[:-1]
-        data = (data[::2] + data[1::2]) / 2
-        if len(data) < 4:
-            break
-    return errors  # Error should plateau; plateau value is true error
-```
-
-**When:** Monte Carlo time series, molecular dynamics trajectories, any correlated samples.
-
-### Goodness-of-fit tests
-
-```python
-def chi_squared_test(observed, expected, errors, dof=None):
-    """
-    Chi-squared test for agreement between data and model.
-
-    Returns:
-        (chi2, chi2_reduced, p_value)
-    """
-    from scipy.stats import chi2 as chi2_dist
-    chi2 = np.sum(((observed - expected) / errors)**2)
-    if dof is None:
-        dof = len(observed) - 1
-    chi2_red = chi2 / dof
-    p_value = 1 - chi2_dist.cdf(chi2, dof)
-
-    # Interpretation:
-    # chi2_red ~ 1: good fit
-    # chi2_red >> 1: model doesn't fit data (or errors underestimated)
-    # chi2_red << 1: overfitting (or errors overestimated)
-    status = "PASS" if 0.1 < chi2_red < 3.0 else "WARN"
-    print(f"{status} chi2/dof = {chi2_red:.2f}, p-value = {p_value:.4f}")
-    return chi2, chi2_red, p_value
-```
-
-### Autocorrelation and effective sample size
-
-```python
-def autocorrelation_time(time_series):
-    """
-    Estimate integrated autocorrelation time.
-    Effective independent samples = N / (2 * tau_int).
-    """
-    n = len(time_series)
-    mean = np.mean(time_series)
-    var = np.var(time_series)
-    if var == 0:
-        return 0
-
-    # Compute autocorrelation function
-    acf = np.correlate(time_series - mean, time_series - mean, mode='full')
-    acf = acf[n-1:] / (var * n)
-
-    # Integrate until first negative value or noise dominates
-    tau_int = 0.5  # Start with C(0)/2 contribution
-    for t in range(1, n // 2):
-        if acf[t] < 0:
-            break
-        tau_int += acf[t]
-
-    n_eff = n / (2 * tau_int)
-    print(f"Autocorrelation time: tau_int = {tau_int:.1f}")
-    print(f"Effective samples: N_eff = {n_eff:.0f} (out of {n} total)")
-    return tau_int
-```
-
-### Thermalization check
-
-```python
-def verify_thermalization(observable_trace, n_bins=10):
-    """
-    Check that Monte Carlo has thermalized by comparing early and late portions.
-    """
-    n = len(observable_trace)
-    bin_size = n // n_bins
-    bin_means = [np.mean(observable_trace[i*bin_size:(i+1)*bin_size])
-                 for i in range(n_bins)]
-
-    # First half vs second half
-    first_half = np.mean(bin_means[:n_bins//2])
-    second_half = np.mean(bin_means[n_bins//2:])
-    overall_std = np.std(bin_means)
-
-    drift = abs(first_half - second_half) / overall_std if overall_std > 0 else 0
-    status = "PASS" if drift < 2.0 else "FAIL"
-    print(f"{status} Thermalization: drift = {drift:.1f}sigma between halves")
-    return drift < 2.0
-```
-
-### Finite-size scaling (for phase transitions and critical phenomena)
-
-```python
-def verify_finite_size_scaling(observable_at_sizes, sizes, expected_exponent,
-                                critical_point, tolerance=0.1):
-    """
-    Verify finite-size scaling: O(L) ~ L^{-x/nu} f((T - T_c) L^{1/nu}).
-
-    At T = T_c: O(L) ~ L^{-x/nu}, so log(O) vs log(L) gives slope -x/nu.
-    """
-    log_L = np.log(sizes)
-    log_O = np.log(np.abs(observable_at_sizes))
-    slope, intercept = np.polyfit(log_L, log_O, 1)
-    relative_diff = abs(slope - expected_exponent) / abs(expected_exponent)
-    status = "PASS" if relative_diff < tolerance else "FAIL"
-    print(f"{status} Finite-size scaling: exponent = {slope:.3f}, "
-          f"expected = {expected_exponent:.3f}")
-    return relative_diff < tolerance
-```
-
-**Verification checklist for statistical results:**
-
-- [ ] Autocorrelation time estimated; effective sample size computed
-- [ ] Error bars from proper resampling (bootstrap/jackknife/binning), not naive std/sqrt(N)
-- [ ] Thermalization verified (discard burn-in)
-- [ ] Goodness of fit assessed (chi-squared, p-value)
-- [ ] Systematic errors estimated separately from statistical
-- [ ] Finite-size effects quantified (if applicable)
-- [ ] Results stable under variation of binning/resampling parameters
-- [ ] Error propagation correct for derived quantities
-
-**When to apply:**
-
-- Every Monte Carlo simulation (classical or quantum)
-- Every fit to numerical or experimental data
-- Every result where randomness enters (disorder averaging, stochastic methods)
-- Before quoting any numerical value with error bars
-
-</statistical_validation>
-
-## Numerical Calculation Checklist
-
-- [ ] Convergence: result stable under grid/basis/timestep refinement
-- [ ] Richardson extrapolation: used to estimate continuum/infinite-basis limit
-- [ ] Conservation: energy, probability, charge conserved to specified tolerance
-- [ ] Known limits: reproduces analytical results where available
-- [ ] Sum rules: spectral sum rules satisfied (f-sum rule, moment sum rules)
-- [ ] Kramers-Kronig: real and imaginary parts of response functions consistent
-- [ ] Cross-check: agrees with independent method or published benchmark
-- [ ] Stability: solution does not blow up or oscillate unphysically
-- [ ] Resolution: sufficient points in regions of rapid variation
-- [ ] Error estimation: uncertainty quantified (not just "converged")
-- [ ] Physical plausibility: positive energies, normalized probabilities, etc.
-- [ ] Spectral positivity: A(k,omega) >= 0 everywhere
-
-## Simulation Checklist
-
-- [ ] Initial conditions: physically reasonable and correctly implemented
-- [ ] Time integration: symplectic integrator for Hamiltonian systems
-- [ ] Conservation monitoring: tracked throughout simulation, not just at end
-- [ ] Finite-size effects: checked by varying system size
-- [ ] Equilibration / thermalization: verified by comparing early and late portions
-- [ ] Autocorrelation: time estimated, effective sample size computed
-- [ ] Statistical errors: from proper resampling (bootstrap/jackknife/binning)
-- [ ] Systematic errors: extrapolated to continuum/infinite-volume limit
-- [ ] Reproducibility: same result with different random seeds
-- [ ] Finite-size scaling: critical exponents consistent with universality class
+- [ ] PRISMA 2020: all 27 items addressed
+- [ ] Flow diagram: numbers add up at each stage
+- [ ] Search strategy: full strategy for at least one database reproduced
+- [ ] Study characteristics table: PICO for each study
+- [ ] Risk of bias table: all domains for all studies
+- [ ] Summary of findings: GRADE for each outcome
+- [ ] Protocol registration: PROSPERO number or equivalent
+- [ ] Deviations: any protocol deviations documented
 
 <automated_verification_script>
 
@@ -449,61 +569,69 @@ def verify_finite_size_scaling(observable_at_sizes, sizes, expected_exponent,
 For the verification subagent, use this pattern:
 
 ```python
-class PhysicsVerifier:
-    """Automated verification of physics calculations."""
+class MedicalVerifier:
+    """Automated verification of medical evidence synthesis."""
 
-    def __init__(self, tolerance=1e-8, unit_system="natural"):
+    def __init__(self, tolerance=0.05):
         self.tolerance = tolerance
-        self.unit_system = unit_system
         self.results = []
 
-    def check_dimensions(self, expression, expected_dimensions):
-        """Verify dimensional consistency."""
+    def check_pico_consistency(self, studies):
+        """Verify PICO elements are compatible across studies."""
         pass
 
-    def check_limiting_case(self, general, limit_params, expected):
-        """Verify a limiting case."""
+    def check_effect_size(self, raw_data, reported_es, reported_se):
+        """Recalculate effect size from raw data and compare."""
         pass
 
-    def check_conservation(self, trajectory, conserved_qty, label=""):
-        """Check a conservation law along a trajectory."""
-        values = [conserved_qty(state) for state in trajectory]
-        drift = max(abs(v - values[0]) for v in values) / (abs(values[0]) + 1e-30)
-        passed = drift < self.tolerance
+    def check_heterogeneity(self, effect_sizes, variances):
+        """Compute and verify heterogeneity statistics."""
+        es = np.array(effect_sizes)
+        v = np.array(variances)
+        w = 1.0 / v
+        mu = np.sum(w * es) / np.sum(w)
+        Q = np.sum(w * (es - mu) ** 2)
+        k = len(es)
+        df = k - 1
+        I_sq = max(0, (Q - df) / Q * 100) if Q > df else 0
+
         self.results.append({
-            "check": f"Conservation: {label}",
+            "check": "Heterogeneity",
+            "passed": I_sq < 75,
+            "detail": f"I-squared = {I_sq:.1f}%, Q = {Q:.2f}, df = {df}"
+        })
+        return I_sq < 75
+
+    def check_publication_bias(self, effect_sizes, standard_errors):
+        """Run Egger's test for publication bias."""
+        pass
+
+    def check_sensitivity_robustness(self, main_estimate, sensitivity_estimates):
+        """Verify main result is robust to sensitivity analyses."""
+        pass
+
+    def check_grade_completeness(self, grade_data):
+        """Verify all GRADE domains are assessed."""
+        required = ["risk_of_bias", "inconsistency", "indirectness",
+                     "imprecision", "publication_bias"]
+        missing = [d for d in required if d not in grade_data]
+        passed = len(missing) == 0
+        self.results.append({
+            "check": "GRADE completeness",
             "passed": passed,
-            "detail": f"max relative drift = {drift:.2e}"
+            "detail": f"Missing domains: {missing}" if missing else "All domains assessed"
         })
         return passed
 
-    def check_convergence(self, values, parameters, expected_order=None):
-        """Check numerical convergence."""
-        pass
-
-    def check_symmetry(self, expression, transform, expected="invariant"):
-        """Check symmetry under transformation."""
-        pass
-
-    def check_positivity(self, values, label=""):
-        """Check that values are non-negative."""
-        min_val = min(values)
-        passed = min_val >= -self.tolerance
+    def check_prisma_compliance(self, prisma_items):
+        """Verify PRISMA 2020 reporting completeness."""
+        total_items = 27
+        reported = sum(1 for v in prisma_items.values() if v)
+        passed = reported >= total_items * 0.9
         self.results.append({
-            "check": f"Positivity: {label}",
+            "check": "PRISMA compliance",
             "passed": passed,
-            "detail": f"min value = {min_val:.2e}"
-        })
-        return passed
-
-    def check_normalization(self, values, expected_sum=1.0, label=""):
-        """Check that values sum to expected total."""
-        total = sum(values)
-        passed = abs(total - expected_sum) < self.tolerance
-        self.results.append({
-            "check": f"Normalization: {label}",
-            "passed": passed,
-            "detail": f"sum = {total:.10e}, expected = {expected_sum}"
+            "detail": f"{reported}/{total_items} items reported"
         })
         return passed
 
@@ -521,7 +649,7 @@ class PhysicsVerifier:
         return "\n".join(lines)
 ```
 
-Run these checks against each physics artifact. Aggregate results into VERIFICATION.md.
+Run these checks against each evidence synthesis artifact. Aggregate results into VERIFICATION.md.
 
 </automated_verification_script>
 
@@ -533,16 +661,15 @@ For automation-first checkpoint patterns, computational environment management, 
 
 Key principles:
 
-- GPD sets up verification environment BEFORE presenting checkpoints
-- Users review results (plots, tables, convergence data), not raw output
+- GMD sets up verification environment BEFORE presenting checkpoints
+- Users review results (forest plots, funnel plots, GRADE tables), not raw output
 - Computational lifecycle: set up environment, run checks, present results
 - Package installation: auto-install where safe, checkpoint for user choice otherwise
-- Error handling: fix numerical issues before checkpoint, never present checkpoint with failed convergence
+- Error handling: fix statistical issues before checkpoint, never present checkpoint with failed verification
 
 ## See Also
 
 - `references/verification/core/verification-quick-reference.md` -- Compact checklist (default entry point)
-- `references/verification/core/verification-core.md` -- Dimensional analysis, limiting cases, conservation laws
-- `../domains/verification-domain-qft.md` -- QFT, particle physics, GR, mathematical physics
-- `../domains/verification-domain-condmat.md` -- Condensed matter, quantum information, AMO
-- `../domains/verification-domain-statmech.md` -- Statistical mechanics, cosmology, fluids
+- `references/verification/core/verification-core.md` -- PICO consistency, sensitivity analysis, risk of bias, GRADE
+- `references/verification/core/computational-verification-templates.md` -- R/Python code templates
+- `references/verification/core/code-testing-medical.md` -- Testing patterns for medical research code

@@ -20,6 +20,8 @@ It is designed for long-horizon projects that require rigorous verification, str
 
 We welcome contributions and feedback via GitHub issues or pull requests; if GPD is useful in your work, please star the repo, and share it with colleagues who might benefit.
 
+> **Note:** Get Medicine Done is a derivative of [Get Physics Done](https://github.com/psi-oss/get-physics-done) by [Physical Superintelligence PBC (PSI)](https://www.psi.inc), adapted for medical research. The orchestration architecture is preserved from GPD; domain-specific content (subfields, protocols, verification) has been replaced with medical research methodology (PRISMA, GRADE, CONSORT, RoB, etc.).
+
 ## Quick Start
 
 Install GPD:
